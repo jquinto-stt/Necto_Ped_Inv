@@ -60,13 +60,6 @@ describe("sesión sin configurar (invariante C3, bug H2)", () => {
     expect(sessionStore.isReady).toBe(false);
   });
 
-  it("no ve ninguna cola ni profesional (scope fail-closed)", async () => {
-    const { sessionStore } = await freshStores();
-
-    expect(sessionStore.dataScopeColas).toEqual({ tipo: "restringido", ids: [] });
-    expect(sessionStore.puedeVerCola("1")).toBe(false);
-    expect(sessionStore.puedeVerProfesional("p1")).toBe(false);
-  });
 
   it("una sección de pedidos sin capacidad declarada se deniega", async () => {
     const { sessionStore } = await freshStores();
@@ -300,59 +293,6 @@ describe("reconciliación sesión ↔ operadores", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// C2 — el legado de turnos/agendamiento sigue funcionando igual
-// ═══════════════════════════════════════════════════════════════════════════
-
-describe("legado congelado: turnos y agendamiento (invariante C2)", () => {
-  it("un operador de turnos mantiene su lista blanca de secciones", async () => {
-    const { sessionStore } = await freshStores();
-    // t2 tiene permisos ["inicio", "turnos", "colas"].
-    sessionStore.simular("t2");
-
-    expect(sessionStore.puedeVerSeccion("turnos", "inicio")).toBe(true);
-    expect(sessionStore.puedeVerSeccion("turnos", "colas")).toBe(true);
-    expect(sessionStore.puedeVerSeccion("turnos", "encuestas")).toBe(false);
-    // El adaptador sin módulo resuelve al módulo del operador.
-    expect(sessionStore.puedeVer("encuestas")).toBe(false);
-    expect(sessionStore.puedeVer("colas")).toBe(true);
-  });
-
-  it("un operador de turnos NO tiene capacidades de pedidos", async () => {
-    const { sessionStore } = await freshStores();
-    sessionStore.simular("t2");
-
-    expect(sessionStore.accessContext.capacidades).toEqual([]);
-    expect(sessionStore.hasPermission("orders.read")).toBe(false);
-    expect(sessionStore.accesoTotal).toBe(false);
-  });
-
-  it("el admin conserva acceso total a las secciones legadas", async () => {
-    const { sessionStore } = await freshStores();
-    sessionStore.configurar(["turnos"], "administrador");
-
-    expect(sessionStore.puedeVerSeccion("turnos", "inicio")).toBe(true);
-    expect(sessionStore.puedeVerSeccion("turnos", "encuestas")).toBe(true);
-    expect(sessionStore.puedeVerSeccion("agendamiento", "analitica")).toBe(true);
-  });
-
-  it("el scope de colas respeta las colas asignadas (t2 → solo la 1)", async () => {
-    const { sessionStore } = await freshStores();
-    sessionStore.simular("t2");
-
-    expect(sessionStore.puedeVerCola("1")).toBe(true);
-    expect(sessionStore.puedeVerCola("2")).toBe(false);
-  });
-
-  it("el scope de profesionales respeta los asignados (a2 → p2 y p3)", async () => {
-    const { sessionStore } = await freshStores();
-    sessionStore.simular("a2");
-
-    expect(sessionStore.puedeVerProfesional("p2")).toBe(true);
-    expect(sessionStore.puedeVerProfesional("p3")).toBe(true);
-    expect(sessionStore.puedeVerProfesional("p1")).toBe(false);
-  });
-});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // C1 — tipoSesion solo enruta, no autoriza

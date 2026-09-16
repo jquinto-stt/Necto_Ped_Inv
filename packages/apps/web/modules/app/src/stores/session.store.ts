@@ -34,7 +34,7 @@ import { rolesStore, ROL_ADMIN, type Capacidad } from "@/stores/roles.store";
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Los módulos del producto. */
-export type Modulo = "turnos" | "agendamiento" | "pedidos";
+export type Modulo = "pedidos";
 
 /**
  * Tipo de sesión — la **vía de entrada** elegida en `/seleccionar`.
@@ -240,30 +240,20 @@ export class SessionStore {
 
   /** Etiqueta legible del conjunto de módulos seleccionados. */
   get modulosLabel() {
-    const label: Record<Modulo, string> = {
-      turnos: "Turnos",
-      agendamiento: "Agendamiento",
-      pedidos: "Pedidos",
-    };
-    return this.modulos.map((m) => label[m]).join(" + ");
+    return "Pedidos";
   }
 
   /**
    * Módulo "principal" con el que arranca la app tras la selección.
-   * Regla acordada: si el usuario eligió varios, la prioridad de entrada es
-   * Turnos → Agendamiento → Pedidos.
    */
   get moduloPrincipal(): Modulo | null {
-    if (this.modulos.includes("turnos")) return "turnos";
-    if (this.modulos.includes("agendamiento")) return "agendamiento";
     if (this.modulos.includes("pedidos")) return "pedidos";
     return null;
   }
 
   /**
    * Módulo de la sesión actual: el del operador simulado si lo hay, o el
-   * principal. Es lo que permite usar `puedeVerSeccion(modulo, seccionId)` sin
-   * ambigüedad, ya que los ids de sección se repiten entre módulos.
+   * principal.
    */
   get moduloActual(): Modulo | null {
     return this.operadorSimulado?.modulo ?? this.moduloPrincipal;
@@ -271,14 +261,12 @@ export class SessionStore {
 
   /**
    * Ruta de entrada tras iniciar sesión / entrar al módulo.
-   * Es la sección "Inicio" del módulo principal (Turnos → /dashboard,
-   * Pedidos → /pedidos/inicio, etc.), tanto para admin como para operador.
    */
   get moduloEntryPath() {
     const modulo = this.moduloPrincipal;
     if (modulo === null) return "/seleccionar";
-    const inicio = SECCIONES[modulo].find((s) => s.id === "inicio");
-    return inicio?.path ?? "/dashboard";
+    const inicio = SECCIONES[modulo]?.find((s) => s.id === "inicio");
+    return inicio?.path ?? "/pedidos/inicio";
   }
 
   // ── Simulación de operador ("Viendo como") ──────────────────────────────
@@ -382,62 +370,15 @@ export class SessionStore {
    * de dentro se comprueban aparte con `hasPermission()`.
    */
   puedeVerSeccion(modulo: Modulo, seccionId: string): boolean {
-    if (modulo !== "pedidos") {
-      // ── LEGADO CONGELADO (contrato §5) ──────────────────────────────────
-      // Este es el ÚNICO punto del código autorizado a leer `op.permisos`
-      // (contrato §4 / invariante C2).
-      const op = this.operadorSimulado;
-      if (op) return op.permisos.includes(seccionId);
-      return this.accesoTotal;
-    }
-
     const seccion = SECCIONES.pedidos.find((s) => s.id === seccionId);
     return seccion?.capacidad ? this.hasPermission(seccion.capacidad) : false;
   }
 
-  /**
-   * Adaptador de compatibilidad con la firma antigua (sin módulo).
-   *
-   * @deprecated Usar `puedeVerSeccion(modulo, seccionId)`. Existe solo para que
-   * `SeccionGuard` y `AppSidebar` sigan funcionando mientras migran a
-   * `CapabilityGuard`. Se retira en la Fase 2 (contrato §4).
-   */
+  /** Adaptador de compatibilidad con la firma antigua. */
   puedeVer(seccionId: string): boolean {
     const modulo = this.moduloActual;
-    // Sin módulo resoluble no hay acceso (fail-closed).
     if (!modulo) return false;
     return this.puedeVerSeccion(modulo, seccionId);
-  }
-
-  // ── Scope de datos (capa aparte de la autorización) ─────────────────────
-  //
-  // Contrato §1.6 / invariante C6: esto NO vive en `AccessContext`, porque
-  // "¿qué datos puede ver?" es una pregunta distinta de "¿puede hacer esto?".
-
-  /** Scope de colas (Turnos). */
-  get dataScopeColas(): DataScope {
-    const op = this.operadorSimulado;
-    if (op) return { tipo: "restringido", ids: op.colaIds };
-    return this.accesoTotal ? { tipo: "sin_restriccion" } : { tipo: "restringido", ids: [] };
-  }
-
-  /** ¿Puede la sesión actual ver la cola dada? */
-  puedeVerCola(colaId: string): boolean {
-    const scope = this.dataScopeColas;
-    return scope.tipo === "sin_restriccion" || scope.ids.includes(colaId);
-  }
-
-  /** Scope de profesionales (Agendamiento). */
-  get dataScopeProfesionales(): DataScope {
-    const op = this.operadorSimulado;
-    if (op) return { tipo: "restringido", ids: op.profesionalIds };
-    return this.accesoTotal ? { tipo: "sin_restriccion" } : { tipo: "restringido", ids: [] };
-  }
-
-  /** ¿Puede la sesión actual ver al profesional dado? */
-  puedeVerProfesional(profesionalId: string): boolean {
-    const scope = this.dataScopeProfesionales;
-    return scope.tipo === "sin_restriccion" || scope.ids.includes(profesionalId);
   }
 
   // ── Ruta de inicio ──────────────────────────────────────────────────────
