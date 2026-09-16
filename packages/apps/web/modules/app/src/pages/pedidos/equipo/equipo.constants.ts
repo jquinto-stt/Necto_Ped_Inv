@@ -55,6 +55,16 @@ export const OPCIONES_FILTRO_ESTADO: { value: string; label: string }[] = [
   { value: "inactivo", label: ESTADO_META.inactivo.label },
 ];
 
+/** Colores de badge semánticos para cada categoría de capacidades. */
+export const CATEGORIA_COLORES: Record<string, BadgeColor> = {
+  ordenes: "info",
+  preparacion: "warning",
+  programados: "primary",
+  canales: "success",
+  ajustes: "light",
+  equipo: "dark",
+};
+
 /**
  * Resume las capacidades efectivas como nombres de grupo ("Órdenes",
  * "Preparación", …) para la columna "Capacidades" de la tabla.

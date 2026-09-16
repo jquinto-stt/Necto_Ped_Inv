@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { observer } from "mobx-react-lite";
 import { PageMeta } from "@/shell/meta";
 import { Card } from "@/elements/ui/card";
 import { Badge } from "@/elements/ui/badge";
 import { Button } from "@/elements/ui/button";
+import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/elements/ui/table";
 import { Input } from "@/elements/form/input";
 import { Label } from "@/elements/form/label";
 import { Select } from "@/elements/form/select";
@@ -18,7 +19,7 @@ import {
   type Capacidad,
   type Operador,
 } from "@/stores";
-import { ESTADO_META } from "./equipo.constants";
+import { ESTADO_META, CATEGORIA_COLORES } from "./equipo.constants";
 import { aplicarToggle, normalizar, procedenciaDe, type Procedencia } from "./excepciones";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -106,6 +107,11 @@ const PerfilContent = observer(({ op }: { op: Operador }) => {
   const efectivas = rolesStore.capacidadesEfectivas(op);
 
   const rolesAsignables = rolesStore.roles.filter((r) => r.id !== "admin_tienda");
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string>("todas");
+
+  const gruposFiltrados = categoriaFiltro === "todas"
+    ? CAPACIDAD_GRUPOS
+    : CAPACIDAD_GRUPOS.filter((g) => g.id === categoriaFiltro);
 
   // ── Cambio de rol ─────────────────────────────────────────────────────────
   const cambiarRol = (nuevoRolId: string) => {
@@ -233,7 +239,8 @@ const PerfilContent = observer(({ op }: { op: Operador }) => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
+      {/* Grid: datos a la izquierda, capacidades a la derecha */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Columna izquierda: datos + rol */}
         <div className="space-y-6">
           <Card>
@@ -305,45 +312,115 @@ const PerfilContent = observer(({ op }: { op: Operador }) => {
           </Card>
         </div>
 
-        {/* Columna derecha: capacidades */}
-        <Card>
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Capacidades</h2>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {efectivas.length} de 16 activas. Cada interruptor muestra si la capacidad viene del rol o es un
-            ajuste puntual de esta persona.
-          </p>
-
-          <div className="mt-5 space-y-4">
-            {CAPACIDAD_GRUPOS.map((grupo) => (
-              <div key={grupo.id} className="rounded-xl border border-gray-200 dark:border-gray-800">
-                <div className="border-b border-gray-100 px-4 py-2.5 dark:border-gray-800">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{grupo.label}</span>
-                </div>
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {grupo.capacidades.map((cap) => {
-                    const proc = procedenciaDe(op, cap, capacidadesDelRol);
-                    const meta = PROCEDENCIA_META[proc];
-                    const activa = proc === "rol" || proc === "concedida";
-                    return (
-                      <div key={cap} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                        <div className="min-w-0">
-                          <p className="text-sm text-gray-700 dark:text-gray-300">{CAPACIDAD_LABEL[cap]}</p>
-                          <p className="font-mono text-[11px] text-gray-400">{cap}</p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <Badge color={meta.color} size="xs">{meta.label}</Badge>
-                          <Switch
-                            checked={activa}
-                            onChange={() => toggleCapacidad(cap)}
-                            aria-label={CAPACIDAD_LABEL[cap]}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+        {/* Columna derecha: capacidades estructuradas como tabla con categorías */}
+        <Card className="lg:col-span-2 p-0 overflow-hidden">
+          <div className="p-5 pb-4 border-b border-gray-100 dark:border-gray-800">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Capacidades y Permisos</h2>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {efectivas.length} de 16 capacidades activas. Organizadas por categorías de negocio.
+                  </p>
                 </div>
               </div>
-            ))}
+
+              {/* Filtros rápidos por categoría */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setCategoriaFiltro("todas")}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+                    categoriaFiltro === "todas"
+                      ? "bg-brand-500 text-white shadow-2xs"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  Todas ({efectivas.length}/16)
+                </button>
+                {CAPACIDAD_GRUPOS.map((g) => {
+                  const activas = g.capacidades.filter((c) => efectivas.includes(c)).length;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => setCategoriaFiltro(g.id)}
+                      className={`px-2 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+                        categoriaFiltro === g.id
+                          ? "bg-brand-500 text-white shadow-2xs"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      {g.label} ({activas}/{g.capacidades.length})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-gray-50/70 border-b border-gray-100 dark:border-gray-800 dark:bg-white/[0.02]">
+                <TableRow>
+                  <TableCell header className="py-3 pl-5 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Categoría
+                  </TableCell>
+                  <TableCell header className="py-3 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Capacidad / Acción
+                  </TableCell>
+                  <TableCell header className="py-3 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Origen
+                  </TableCell>
+                  <TableCell header className="py-3 text-right pr-5 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Acceso
+                  </TableCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {gruposFiltrados.map((grupo) => (
+                  <Fragment key={grupo.id}>
+                    {grupo.capacidades.map((cap) => {
+                      const proc = procedenciaDe(op, cap, capacidadesDelRol);
+                      const meta = PROCEDENCIA_META[proc];
+                      const activa = proc === "rol" || proc === "concedida";
+                      return (
+                        <TableRow key={cap} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.01] transition-colors">
+                          <TableCell className="py-3 pl-5 whitespace-nowrap">
+                            <Badge color={CATEGORIA_COLORES[grupo.id] || "light"} size="xs" className="font-semibold">
+                              {grupo.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-3">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800 dark:text-white/90">
+                                {CAPACIDAD_LABEL[cap]}
+                              </p>
+                              <p className="font-mono text-[11px] text-gray-400">{cap}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-3 whitespace-nowrap">
+                            <Badge color={meta.color} size="xs">{meta.label}</Badge>
+                          </TableCell>
+                          <TableCell className="py-3 text-right pr-5 whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-2.5">
+                              <span className={`text-xs font-medium ${activa ? "text-success-600 dark:text-success-400" : "text-gray-400"}`}>
+                                {activa ? "Habilitada" : "Deshabilitada"}
+                              </span>
+                              <Switch
+                                checked={activa}
+                                onChange={() => toggleCapacidad(cap)}
+                                aria-label={CAPACIDAD_LABEL[cap]}
+                              />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </Fragment>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </Card>
       </div>
