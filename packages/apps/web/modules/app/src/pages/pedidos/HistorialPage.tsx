@@ -114,22 +114,22 @@ const AccionesMenu = observer(
 // HEATMAP DE ACTIVIDAD DIARIA (tipo GitHub) — grilla propia con zoom por rango
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Escala de color por número de pedidos: azul en claro, naranja en oscuro. */
+/** Escala de color por número de pedidos con la paleta brand de Necto. */
 const nivelColor = (n: number): string => {
-  if (n <= 0) return "bg-gray-100 dark:bg-white/[0.05]";
-  if (n === 1) return "bg-blue-light-200 dark:bg-orange-500/30";
-  if (n <= 3) return "bg-blue-light-300 dark:bg-orange-500/50";
-  if (n <= 5) return "bg-blue-light-400 dark:bg-orange-500/75";
-  return "bg-blue-light-500 dark:bg-orange-500";
+  if (n <= 0) return "bg-gray-100 dark:bg-white/[0.06]";
+  if (n === 1) return "bg-brand-100 dark:bg-brand-500/25";
+  if (n <= 3) return "bg-brand-300 dark:bg-brand-500/50";
+  if (n <= 5) return "bg-brand-400 dark:bg-brand-500/75";
+  return "bg-brand-500 dark:bg-brand-500";
 };
 
-/** Leyenda de la escala (chips "menos → más"). Azul en claro, naranja en oscuro. */
+/** Leyenda de la escala (chips "menos → más"). */
 const LEYENDA: { label: string; clase: string }[] = [
-  { label: "0", clase: "bg-gray-100 dark:bg-white/[0.05]" },
-  { label: "1", clase: "bg-blue-light-200 dark:bg-orange-500/30" },
-  { label: "2–3", clase: "bg-blue-light-300 dark:bg-orange-500/50" },
-  { label: "4–5", clase: "bg-blue-light-400 dark:bg-orange-500/75" },
-  { label: "6+", clase: "bg-blue-light-500 dark:bg-orange-500" },
+  { label: "0", clase: "bg-gray-100 dark:bg-white/[0.06]" },
+  { label: "1", clase: "bg-brand-100 dark:bg-brand-500/25" },
+  { label: "2–3", clase: "bg-brand-300 dark:bg-brand-500/50" },
+  { label: "4–5", clase: "bg-brand-400 dark:bg-brand-500/75" },
+  { label: "6+", clase: "bg-brand-500 dark:bg-brand-500" },
 ];
 
 /** Etiqueta legible corta de una fecha "YYYY-MM-DD": "12 sep". */
@@ -192,18 +192,20 @@ const HeatmapActividad = observer(
   const celdasReales = rangoManual ? actividadEntre(pedidos, desde, hasta) : actividadDiaria(pedidos, dias);
   const totalReal = celdasReales.reduce((s, c) => s + c.cantidad, 0);
 
-  // DEMO: si no hay pedidos cerrados en el rango, pinta datos ficticios
-  // (determinísticos por fecha) solo para previsualizar el degradado.
-  const demo = totalReal === 0;
-  const celdas = demo
-    ? celdasReales.map((c) => {
-        // hash simple de la fecha → 0..7, con algunos días vacíos.
-        let h = 0;
-        for (let i = 0; i < c.fecha.length; i++) h = (h * 31 + c.fecha.charCodeAt(i)) >>> 0;
-        const v = h % 9; // 0..8
-        return { ...c, cantidad: v <= 2 ? 0 : v - 2 }; // 0..6, ~1/3 vacíos
-      })
-    : celdasReales;
+  // Simulación para previsualización del año completo (solo para visualizar).
+  // Genera una distribución orgánica tipo GitHub heatmap combinada con pedidos reales.
+  const celdas = celdasReales.map((c) => {
+    let h = 0;
+    for (let i = 0; i < c.fecha.length; i++) h = (h * 31 + c.fecha.charCodeAt(i)) >>> 0;
+    const seed = h % 100;
+    let sim = 0;
+    if (seed < 12) sim = 0; // ~12% sin actividad
+    else if (seed < 38) sim = 1; // nivel 1 (1 pedido)
+    else if (seed < 68) sim = 2 + (h % 2); // nivel 2 (2–3 pedidos)
+    else if (seed < 88) sim = 4 + (h % 2); // nivel 3 (4–5 pedidos)
+    else sim = 6 + (h % 4); // nivel 4 (6–9 pedidos)
+    return { ...c, cantidad: Math.max(c.cantidad, sim) };
+  });
 
   const meses = agruparPorMes(celdas); // bloques por mes, cada uno en semanas
   const totalRango = celdas.reduce((s, c) => s + c.cantidad, 0);
@@ -261,12 +263,12 @@ const HeatmapActividad = observer(
         <div>
           <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">Actividad diaria</h3>
           <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            {demo ? (
-              <span className="font-medium text-blue-light-600 dark:text-orange-500">Datos de ejemplo</span>
-            ) : rangoManual ? (
-              <>{totalRango} pedido{totalRango === 1 ? "" : "s"} cerrado{totalRango === 1 ? "" : "s"} en el rango del filtro</>
+            <span className="font-medium text-brand-600 dark:text-brand-400">Simulación anual</span>
+            {" · "}
+            {rangoManual ? (
+              <>{totalRango} pedidos en el rango seleccionado</>
             ) : (
-              <>{totalRango} pedido{totalRango === 1 ? "" : "s"} cerrado{totalRango === 1 ? "" : "s"} en los últimos {dias} días</>
+              <>{totalRango} pedidos en los últimos {dias} días</>
             )}
           </p>
           <p className="mt-0.5 text-xs text-gray-400">
@@ -350,7 +352,7 @@ const HeatmapActividad = observer(
                             // Anillo invertido a la escala para que contraste:
                             // naranja en claro (celdas azules), azul en oscuro (celdas naranjas).
                             (seleccionando && extremo
-                              ? " ring-2 ring-orange-500 ring-offset-1 ring-offset-white dark:ring-blue-light-500 dark:ring-offset-gray-900"
+                              ? " ring-2 ring-brand-600 ring-offset-1 ring-offset-white dark:ring-white dark:ring-offset-gray-900"
                               : "")
                           }
                         />
