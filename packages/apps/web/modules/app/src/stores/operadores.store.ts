@@ -28,6 +28,10 @@ export interface Operador {
   // Fuente de verdad de la autorización. Contrato:
   //   outputs/contrato-arquitectura-acceso-necto.md §4
 
+  /** Cargo o designación del operador (ej. Head of Design, Vendedor Mostrador). */
+  cargo?: string;
+  /** URL de la foto de perfil del operador. */
+  avatarUrl?: string;
   /** Rol asignado (ver `rolesStore`). De él se derivan las capacidades base. */
   rolId?: string;
   /** Excepciones que SUMAN capacidades sobre las del rol. */
@@ -184,9 +188,62 @@ const ENCUESTA_STATS_VACIAS: EncuestaStats = {
 
 const SEED: Operador[] = [
   // ── Pedidos (migrado a capacidades: el rol es la fuente de verdad) ──────────
-  { id: "d1", nombre: "Camila Ortiz", email: "camila.ortiz@negocio.com", telefono: "+57 320 111 2233", estado: "activo", modulo: "pedidos", rolId: "supervisor_pedidos", permisos: todasLasSecciones("pedidos"), profesionalIds: [], colaIds: [] },
-  { id: "d2", nombre: "Mateo Vargas", email: "mateo.vargas@negocio.com", telefono: "+57 321 222 3344", estado: "activo", modulo: "pedidos", rolId: "vendedor", permisos: ["inicio", "tablero", "crear"], profesionalIds: [], colaIds: [] },
-  { id: "d3", nombre: "Daniela Suárez", email: "daniela.suarez@negocio.com", telefono: "+57 322 333 4455", estado: "pendiente", modulo: "pedidos", rolId: "vendedor", permisos: ["inicio", "tablero"], profesionalIds: [], colaIds: [] },
+  {
+    id: "d0",
+    nombre: "Tailor Davis (Tú)",
+    email: "tailor.davis@negocio.com",
+    telefono: "+57 300 123 4567",
+    cargo: "Head of Operations",
+    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+    estado: "activo",
+    modulo: "pedidos",
+    rolId: "admin_tienda",
+    permisos: todasLasSecciones("pedidos"),
+    profesionalIds: [],
+    colaIds: [],
+  },
+  {
+    id: "d1",
+    nombre: "Camila Ortiz",
+    email: "camila.ortiz@negocio.com",
+    telefono: "+57 320 111 2233",
+    cargo: "Supervisora de Despacho",
+    avatarUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+    estado: "activo",
+    modulo: "pedidos",
+    rolId: "supervisor_pedidos",
+    permisos: todasLasSecciones("pedidos"),
+    profesionalIds: [],
+    colaIds: [],
+  },
+  {
+    id: "d2",
+    nombre: "Mateo Vargas",
+    email: "mateo.vargas@negocio.com",
+    telefono: "+57 321 222 3344",
+    cargo: "Vendedor de Mostrador",
+    avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+    estado: "activo",
+    modulo: "pedidos",
+    rolId: "vendedor",
+    permisos: ["inicio", "tablero", "crear"],
+    profesionalIds: [],
+    colaIds: [],
+  },
+  {
+    id: "d3",
+    nombre: "Daniela Suárez",
+    email: "daniela.suarez@negocio.com",
+    telefono: "+57 322 333 4455",
+    cargo: "Atención y Pedidos",
+    avatarUrl: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80",
+    estado: "pendiente",
+    modulo: "pedidos",
+    rolId: "vendedor",
+    permisos: ["inicio", "tablero"],
+    profesionalIds: [],
+    colaIds: [],
+  },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════

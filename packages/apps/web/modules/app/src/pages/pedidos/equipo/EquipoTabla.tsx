@@ -1,26 +1,23 @@
+import { useState } from "react";
 import { useNavigate } from "react-router";
 import { observer } from "mobx-react-lite";
+import { Avatar } from "@/elements/ui/avatar";
 import { Badge } from "@/elements/ui/badge";
-import { Button } from "@/elements/ui/button";
+import { Dropdown, DropdownItem } from "@/elements/ui/dropdown";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/elements/ui/table";
+import {
+  UserIcon,
+  TaskIcon,
+  CheckCircleIcon,
+  MoreDotIcon,
+  ArrowRightIcon,
+  PencilIcon,
+  UserCircleIcon,
+} from "@/icons";
 import { operadoresStore, rolesStore, sessionStore, type Operador } from "@/stores";
-import { ESTADO_META, resumenGrupos } from "./equipo.constants";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TABLA DEL EQUIPO
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// Columnas: Nombre · Correo · Rol · Capacidades · Estado · Acciones.
-//
-// La columna "Rol" y la de "Capacidades" son la diferencia frente a la pantalla
-// legacy de Operadores: allí se listaban las secciones que la persona podía
-// ver; aquí se muestra **qué rol tiene** y qué grupos de capacidades le
-// conceden sus capacidades efectivas (rol ∪ extras \ removidas).
-//
-// El clic en la fila NAVEGA al perfil (`/pedidos/equipo/:id`) en vez de abrir un
-// modal: un perfil con editor de rol y 16 capacidades no cabe bien en un modal,
-// y una ruta se puede compartir y recargar.
-//
+// TABLA DEL EQUIPO (Elements UI)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** true si la persona tiene excepciones sobre las capacidades de su rol. */
@@ -28,8 +25,32 @@ function tieneAjustes(op: Operador): boolean {
   return (op.capacidadesExtra?.length ?? 0) > 0 || (op.capacidadesRemovidas?.length ?? 0) > 0;
 }
 
+/** Obtiene las iniciales de 1 o 2 letras para el fallback del avatar. */
+function obtenerIniciales(nombre: string): string {
+  const parts = nombre.trim().split(/\s+/);
+  if (parts.length === 0) return "U";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+/** Métricas mock de actividad/pedidos asociadas al operador. */
+function obtenerStats(op: Operador) {
+  if (op.rolId === "admin_tienda") return { activas: 3, completadas: 12 };
+  if (op.rolId === "supervisor_pedidos") return { activas: 5, completadas: 8 };
+  if (op.id === "d2") return { activas: 4, completadas: 10 };
+  return { activas: 2, completadas: 7 };
+}
+
+interface GrupoEquipo {
+  id: string;
+  titulo: string;
+  operadores: Operador[];
+}
+
 export const EquipoTabla = observer(({ operadores }: { operadores: Operador[] }) => {
   const navigate = useNavigate();
+  const [seleccionados, setSeleccionados] = useState<Record<string, boolean>>({});
+  const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
 
   if (operadores.length === 0) {
     return (
@@ -39,23 +60,94 @@ export const EquipoTabla = observer(({ operadores }: { operadores: Operador[] })
     );
   }
 
+  // Agrupación por rol funcional para jerarquía visual
+  const grupos: GrupoEquipo[] = [
+    {
+      id: "admins",
+      titulo: "Admins",
+      operadores: operadores.filter((o) => o.rolId === "admin_tienda"),
+    },
+    {
+      id: "supervisores",
+      titulo: "Supervisores",
+      operadores: operadores.filter((o) => o.rolId === "supervisor_pedidos"),
+    },
+    {
+      id: "vendedores",
+      titulo: "Vendedores y Operadores",
+      operadores: operadores.filter((o) => o.rolId === "vendedor"),
+    },
+    {
+      id: "otros",
+      titulo: "Otros Miembros",
+      operadores: operadores.filter(
+        (o) => o.rolId !== "admin_tienda" && o.rolId !== "supervisor_pedidos" && o.rolId !== "vendedor"
+      ),
+    },
+  ].filter((g) => g.operadores.length > 0);
+
+  const todosSeleccionados =
+    operadores.length > 0 && operadores.every((o) => seleccionados[o.id]);
+
+  const toggleTodos = () => {
+    if (todosSeleccionados) {
+      setSeleccionados({});
+    } else {
+      const nuevo: Record<string, boolean> = {};
+      operadores.forEach((o) => {
+        nuevo[o.id] = true;
+      });
+      setSeleccionados(nuevo);
+    }
+  };
+
+  const toggleSeleccion = (id: string) => {
+    setSeleccionados((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-white/[0.03]">
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-gray-50/70 border-b border-gray-100 dark:border-gray-800 dark:bg-white/[0.02]">
             <TableRow>
-              <TableCell header>Nombre</TableCell>
-              <TableCell header>Correo electrónico</TableCell>
-              <TableCell header>Rol</TableCell>
-              <TableCell header>Capacidades</TableCell>
-              <TableCell header>Estado</TableCell>
-              <TableCell header className="text-right">Acciones</TableCell>
+              <TableCell header className="w-12 px-4 py-3.5">
+                <input
+                  type="checkbox"
+                  checked={todosSeleccionados}
+                  onChange={toggleTodos}
+                  aria-label="Seleccionar todos"
+                  className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
+                />
+              </TableCell>
+              <TableCell header className="font-semibold text-gray-700 dark:text-gray-300">
+                <div className="flex items-center gap-1.5">
+                  <span>Name &amp; Designation</span>
+                </div>
+              </TableCell>
+              <TableCell header className="font-semibold text-gray-700 dark:text-gray-300">
+                Task Status
+              </TableCell>
+              <TableCell header className="font-semibold text-gray-700 dark:text-gray-300">
+                User Type &amp; Access
+              </TableCell>
+              <TableCell header className="text-right font-semibold text-gray-700 dark:text-gray-300 pr-6">
+                Actions
+              </TableCell>
             </TableRow>
           </TableHeader>
+
           <TableBody>
-            {operadores.map((op) => (
-              <FilaEquipo key={op.id} op={op} onAbrir={() => navigate(`/pedidos/equipo/${op.id}`)} />
+            {grupos.map((grupo) => (
+              <GrupoSection
+                key={grupo.id}
+                grupo={grupo}
+                seleccionados={seleccionados}
+                onToggleSeleccion={toggleSeleccion}
+                menuAbiertoId={menuAbiertoId}
+                onSetMenuAbiertoId={setMenuAbiertoId}
+                onAbrir={(id) => navigate(`/pedidos/equipo/${id}`)}
+              />
             ))}
           </TableBody>
         </Table>
@@ -65,102 +157,325 @@ export const EquipoTabla = observer(({ operadores }: { operadores: Operador[] })
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FILA
+// SECCIÓN DE GRUPO CON DIVISOR VISUAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-const FilaEquipo = observer(({ op, onAbrir }: { op: Operador; onAbrir: () => void }) => {
-  const navigate = useNavigate();
-  const estado = ESTADO_META[op.estado];
-  const rol = rolesStore.porId(op.rolId);
-  const capacidades = rolesStore.capacidadesEfectivas(op);
-  const grupos = resumenGrupos(capacidades);
-  const ajustes = tieneAjustes(op);
+const GrupoSection = observer(
+  ({
+    grupo,
+    seleccionados,
+    onToggleSeleccion,
+    menuAbiertoId,
+    onSetMenuAbiertoId,
+    onAbrir,
+  }: {
+    grupo: GrupoEquipo;
+    seleccionados: Record<string, boolean>;
+    onToggleSeleccion: (id: string) => void;
+    menuAbiertoId: string | null;
+    onSetMenuAbiertoId: (id: string | null) => void;
+    onAbrir: (id: string) => void;
+  }) => {
+    const grupoSeleccionado = grupo.operadores.every((o) => seleccionados[o.id]);
 
-  // Las celdas informativas son clickeables; la de acciones no (para no
-  // disparar la navegación al pulsar un botón).
-  const celdaClickeable = "cursor-pointer transition-colors";
+    const toggleGrupo = () => {
+      grupo.operadores.forEach((o) => onToggleSeleccion(o.id));
+    };
 
-  // "Ver como" solo tiene sentido sobre una persona activa: `simular()` rechaza
-  // a las pendientes y suspendidas (invariante C8). Se muestra deshabilitado en
-  // vez de oculto para que el admin entienda por qué no puede.
-  const puedeVerComo = op.estado === "activo";
+    return (
+      <>
+        {/* Encabezado de grupo con separador punteado */}
+        <tr className="bg-gray-50/40 dark:bg-white/[0.01]">
+          <td colSpan={5} className="px-4 py-3">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={grupoSeleccionado}
+                onChange={toggleGrupo}
+                aria-label={`Seleccionar grupo ${grupo.titulo}`}
+                className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
+              />
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                {grupo.titulo} ({grupo.operadores.length})
+              </span>
+              <div className="h-px flex-1 border-b border-dashed border-gray-200 dark:border-gray-800" />
+            </div>
+          </td>
+        </tr>
 
-  const verComo = () => {
-    if (!puedeVerComo) return;
-    sessionStore.simular(op.id);
-    // Al simular, la sesión pierde `team.manage` (el rol de la persona no lo
-    // tiene), así que quedarse en /pedidos/equipo mostraría "sin acceso".
-    // Navegamos al inicio que la persona SÍ puede ver.
-    navigate(sessionStore.homePathActual);
-  };
+        {/* Filas del grupo */}
+        {grupo.operadores.map((op) => (
+          <FilaEquipo
+            key={op.id}
+            op={op}
+            seleccionado={!!seleccionados[op.id]}
+            onToggleSeleccion={() => onToggleSeleccion(op.id)}
+            isMenuOpen={menuAbiertoId === op.id}
+            onToggleMenu={() =>
+              onSetMenuAbiertoId(menuAbiertoId === op.id ? null : op.id)
+            }
+            onCloseMenu={() => onSetMenuAbiertoId(null)}
+            onAbrir={() => onAbrir(op.id)}
+          />
+        ))}
+      </>
+    );
+  }
+);
 
-  return (
-    <TableRow className="hover:bg-gray-50 dark:hover:bg-white/[0.03]">
-      <TableCell className={`font-medium text-gray-800 dark:text-white/90 ${celdaClickeable}`}>
-        <div onClick={onAbrir}>{op.nombre}</div>
-      </TableCell>
+// ═══════════════════════════════════════════════════════════════════════════
+// FILA DE OPERADOR
+// ═══════════════════════════════════════════════════════════════════════════
 
-      <TableCell className={`text-gray-500 dark:text-gray-400 ${celdaClickeable}`}>
-        <div onClick={onAbrir}>{op.email}</div>
-      </TableCell>
+const FilaEquipo = observer(
+  ({
+    op,
+    seleccionado,
+    onToggleSeleccion,
+    isMenuOpen,
+    onToggleMenu,
+    onCloseMenu,
+    onAbrir,
+  }: {
+    op: Operador;
+    seleccionado: boolean;
+    onToggleSeleccion: () => void;
+    isMenuOpen: boolean;
+    onToggleMenu: () => void;
+    onCloseMenu: () => void;
+    onAbrir: () => void;
+  }) => {
+    const navigate = useNavigate();
+    const rol = rolesStore.porId(op.rolId);
+    const capacidades = rolesStore.capacidadesEfectivas(op);
+    const ajustes = tieneAjustes(op);
+    const stats = obtenerStats(op);
+    const puedeVerComo = op.estado === "activo";
 
-      <TableCell className={celdaClickeable}>
-        <div onClick={onAbrir}>
-          {rol ? (
-            <span className="text-sm text-gray-700 dark:text-gray-300">{rol.nombre}</span>
-          ) : (
-            <span className="text-sm text-gray-400">Sin rol</span>
-          )}
-        </div>
-      </TableCell>
+    const verComo = () => {
+      if (!puedeVerComo) return;
+      onCloseMenu();
+      sessionStore.simular(op.id);
+      navigate(sessionStore.homePathActual);
+    };
 
-      <TableCell className={celdaClickeable}>
-        <div onClick={onAbrir} className="flex flex-wrap items-center gap-1">
-          {grupos.length > 0 ? (
-            <>
-              {grupos.map((g) => (
-                <Badge key={g} color="info" size="sm">{g}</Badge>
-              ))}
-              {ajustes && (
-                <span title="Tiene capacidades ajustadas a mano respecto a su rol">
-                  <Badge color="warning" size="sm">Ajustes</Badge>
-                </span>
-              )}
-            </>
-          ) : (
-            <span className="text-sm text-gray-400">Sin acceso</span>
-          )}
-        </div>
-      </TableCell>
+    // Determinación del badge de User Type (Rol)
+    let userTypeConfig = {
+      label: rol?.nombre || "Operador",
+      color: "dark" as const,
+      className: "bg-gray-800 text-white dark:bg-gray-700",
+    };
 
-      <TableCell className={celdaClickeable}>
-        <div onClick={onAbrir}>
-          <Badge color={estado.color} size="sm">{estado.label}</Badge>
-        </div>
-      </TableCell>
+    if (op.rolId === "admin_tienda") {
+      userTypeConfig = {
+        label: "Admin",
+        color: "primary" as const,
+        className: "bg-[#635BFF] text-white",
+      };
+    } else if (op.rolId === "supervisor_pedidos") {
+      userTypeConfig = {
+        label: "Supervisor",
+        color: "info" as const,
+        className: "bg-blue-600 text-white",
+      };
+    } else if (op.rolId === "vendedor") {
+      userTypeConfig = {
+        label: "Vendedor",
+        color: "dark" as const,
+        className: "bg-slate-700 text-white",
+      };
+    }
 
-      <TableCell>
-        <div className="flex items-center justify-end gap-2">
-          {/* El `title` va en un envoltorio, no en el Button: `ButtonProps` no lo
-              acepta, y además un botón deshabilitado no emite eventos de ratón
-              en todos los navegadores, así que el tooltip debe vivir fuera. */}
-          <span title={puedeVerComo ? `Entrar como ${op.nombre}` : "Solo se puede ver como una persona activa"}>
-            <Button size="sm" variant="ghost" disabled={!puedeVerComo} onClick={verComo}>
-              Ver como
-            </Button>
-          </span>
+    // Determinación del badge de Access
+    let accessBadge = {
+      label: "Partial Access",
+      color: "light" as const,
+      className: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+    };
 
-          {op.estado === "pendiente" && (
-            <Button size="sm" onClick={() => operadoresStore.aprobar(op.id)}>Aprobar</Button>
-          )}
-          {op.estado === "activo" && (
-            <Button size="sm" variant="outline" onClick={() => operadoresStore.desactivar(op.id)}>Suspender</Button>
-          )}
-          {op.estado === "inactivo" && (
-            <Button size="sm" variant="outline" onClick={() => operadoresStore.activar(op.id)}>Activar</Button>
-          )}
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-});
+    if (op.rolId === "admin_tienda" || capacidades.length >= 16) {
+      accessBadge = {
+        label: "Full Access",
+        color: "error" as const,
+        className: "bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300",
+      };
+    } else if (ajustes) {
+      accessBadge = {
+        label: "Custom Access",
+        color: "warning" as const,
+        className: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+      };
+    }
+
+    return (
+      <TableRow className="hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors">
+        {/* Checkbox de selección */}
+        <TableCell className="w-12 px-4 py-4">
+          <input
+            type="checkbox"
+            checked={seleccionado}
+            onChange={onToggleSeleccion}
+            aria-label={`Seleccionar ${op.nombre}`}
+            className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
+          />
+        </TableCell>
+
+        {/* Columna 1: Name & Designation */}
+        <TableCell className="py-4">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={onAbrir}>
+            <Avatar
+              src={op.avatarUrl || ""}
+              initials={obtenerIniciales(op.nombre)}
+              size="medium"
+              alt={op.nombre}
+              className="ring-2 ring-gray-100 dark:ring-gray-800 shadow-sm flex-shrink-0"
+            />
+            <div className="flex flex-col min-w-0">
+              <span className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                {op.nombre}
+              </span>
+              <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                {op.cargo || op.email}
+              </span>
+            </div>
+          </div>
+        </TableCell>
+
+        {/* Columna 2: Task Status */}
+        <TableCell className="py-4">
+          <div className="flex items-center gap-2">
+            {/* Active Tasks Pill */}
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-gray-50/90 border border-gray-200/80 text-xs shadow-[0_1px_2px_rgba(0,0,0,0.02)] dark:bg-gray-800/60 dark:border-gray-700">
+              <span className="text-blue-500">
+                <TaskIcon className="h-3.5 w-3.5" />
+              </span>
+              <span className="font-bold text-gray-900 dark:text-gray-100">{stats.activas}</span>
+              <span className="text-gray-500 dark:text-gray-400">Active Tasks</span>
+            </div>
+
+            {/* Completed Tasks Pill */}
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-gray-50/90 border border-gray-200/80 text-xs shadow-[0_1px_2px_rgba(0,0,0,0.02)] dark:bg-gray-800/60 dark:border-gray-700">
+              <span className="text-emerald-500">
+                <CheckCircleIcon className="h-3.5 w-3.5" />
+              </span>
+              <span className="font-bold text-gray-900 dark:text-gray-100">{stats.completadas}</span>
+              <span className="text-gray-500 dark:text-gray-400">Completed</span>
+            </div>
+          </div>
+        </TableCell>
+
+        {/* Columna 3: User Type & Access */}
+        <TableCell className="py-4">
+          <div className="flex items-center gap-2">
+            {/* User Type Badge con icono */}
+            <Badge
+              variant="solid"
+              size="sm"
+              className={`${userTypeConfig.className} font-medium px-2.5 py-0.5 rounded-lg shadow-sm`}
+              startIcon={<UserIcon className="h-3 w-3 stroke-current" />}
+            >
+              {userTypeConfig.label}
+            </Badge>
+
+            {/* Access Badge */}
+            <Badge
+              variant="light"
+              size="sm"
+              className={`${accessBadge.className} font-medium px-2.5 py-0.5 rounded-lg`}
+            >
+              {accessBadge.label}
+            </Badge>
+          </div>
+        </TableCell>
+
+        {/* Columna 4: Actions */}
+        <TableCell className="py-4 text-right pr-6">
+          <div className="flex items-center justify-end gap-3 relative">
+            {/* View Profile Link/Button */}
+            <button
+              onClick={onAbrir}
+              className="inline-flex items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
+            >
+              <span>View Profile</span>
+              <span className="text-xs">&gt;</span>
+            </button>
+
+            {/* Context Menu Trigger */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleMenu();
+                }}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-gray-300 transition-colors"
+                aria-label="Más opciones"
+              >
+                <MoreDotIcon className="h-4 w-4" />
+              </button>
+
+              {/* Elements Dropdown Menu */}
+              <Dropdown
+                isOpen={isMenuOpen}
+                onClose={onCloseMenu}
+                className="right-0 top-full mt-1 w-48 text-left z-20 shadow-lg border border-gray-100 dark:border-gray-800"
+              >
+                <DropdownItem
+                  onClick={verComo}
+                  className={!puedeVerComo ? "opacity-50 pointer-events-none" : ""}
+                >
+                  <span className="flex items-center gap-2">
+                    <UserCircleIcon className="h-4 w-4 text-gray-400" />
+                    <span>Ver como (Simular)</span>
+                  </span>
+                </DropdownItem>
+
+                <DropdownItem onClick={() => { onCloseMenu(); onAbrir(); }}>
+                  <span className="flex items-center gap-2">
+                    <PencilIcon className="h-4 w-4 text-gray-400" />
+                    <span>Editar capacidades</span>
+                  </span>
+                </DropdownItem>
+
+                <hr className="my-1 border-gray-100 dark:border-gray-800" />
+
+                {op.estado === "pendiente" && (
+                  <DropdownItem
+                    onClick={() => {
+                      operadoresStore.aprobar(op.id);
+                      onCloseMenu();
+                    }}
+                  >
+                    <span className="text-emerald-600 font-medium">Aprobar operador</span>
+                  </DropdownItem>
+                )}
+
+                {op.estado === "activo" && (
+                  <DropdownItem
+                    onClick={() => {
+                      operadoresStore.desactivar(op.id);
+                      onCloseMenu();
+                    }}
+                  >
+                    <span className="text-amber-600 font-medium">Suspender</span>
+                  </DropdownItem>
+                )}
+
+                {op.estado === "inactivo" && (
+                  <DropdownItem
+                    onClick={() => {
+                      operadoresStore.activar(op.id);
+                      onCloseMenu();
+                    }}
+                  >
+                    <span className="text-emerald-600 font-medium">Activar</span>
+                  </DropdownItem>
+                )}
+              </Dropdown>
+            </div>
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  }
+);
