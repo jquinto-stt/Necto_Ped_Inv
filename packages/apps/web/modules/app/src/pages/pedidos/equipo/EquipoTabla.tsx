@@ -7,7 +7,6 @@ import { Dropdown, DropdownItem } from "@/elements/ui/dropdown";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/elements/ui/table";
 import {
   UserIcon,
-  MoreDotIcon,
   PencilIcon,
   UserCircleIcon,
 } from "@/icons";
@@ -80,7 +79,7 @@ export const EquipoTabla = observer(({ operadores }: { operadores: Operador[] })
     },
     {
       id: "vendedores",
-      titulo: "Vendedores y Operadores",
+      titulo: "Operadores",
       operadores: noPendientes.filter((o) => o.rolId === "vendedor"),
     },
     {
@@ -255,7 +254,7 @@ const FilaEquipo = observer(
       };
     } else if (op.rolId === "vendedor") {
       userTypeConfig = {
-        label: "Vendedor",
+        label: "Operador",
         variant: "light",
         color: "dark",
       };
@@ -356,15 +355,33 @@ const FilaEquipo = observer(
         {/* Columna 3: Rol y Acceso */}
         <TableCell className="py-4">
           <div className="flex items-center gap-2">
-            {/* Rol Badge con icono */}
-            <Badge
-              variant={userTypeConfig.variant}
-              color={userTypeConfig.color}
-              size="sm"
-              startIcon={<UserIcon className="h-3 w-3 stroke-current" />}
-            >
-              {userTypeConfig.label}
-            </Badge>
+            {/* Botón rectangular de Rol (Admin sin lápiz, Supervisor y Operador con lápiz) */}
+            {op.rolId === "admin_tienda" ? (
+              <button
+                type="button"
+                onClick={onAbrir}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-brand-500 text-white hover:bg-brand-600 shadow-2xs transition-colors cursor-pointer"
+                title="Ver perfil de Administrador"
+              >
+                <UserIcon className="h-3.5 w-3.5 stroke-current" />
+                <span>Admin</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onAbrir}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold shadow-2xs transition-all cursor-pointer group ${
+                  op.rolId === "supervisor_pedidos"
+                    ? "bg-gray-800 text-white hover:bg-gray-900 dark:bg-gray-700 dark:hover:bg-gray-600"
+                    : "bg-gray-600 text-white hover:bg-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500"
+                }`}
+                title={`Cambiar rol (${userTypeConfig.label}) en el perfil`}
+              >
+                <UserIcon className="h-3.5 w-3.5 stroke-current" />
+                <span>{userTypeConfig.label}</span>
+                <PencilIcon className="h-3 w-3 opacity-75 group-hover:opacity-100 group-hover:scale-110 transition-all ml-0.5" />
+              </button>
+            )}
 
             {/* Acceso Badge */}
             <Badge
@@ -391,16 +408,7 @@ const FilaEquipo = observer(
               </button>
             )}
 
-            {/* Botón Ver perfil */}
-            <button
-              onClick={onAbrir}
-              className="inline-flex items-center gap-1 text-sm font-semibold text-brand-500 hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
-            >
-              <span>Ver perfil</span>
-              <span className="text-xs">&gt;</span>
-            </button>
-
-            {/* Menú contextual de tres puntos */}
+            {/* Menú contextual de opciones rápidas (3x3 grid) */}
             <div className="relative">
               <button
                 type="button"
@@ -408,10 +416,26 @@ const FilaEquipo = observer(
                   e.stopPropagation();
                   onToggleMenu();
                 }}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-gray-300 transition-colors"
-                aria-label="Más opciones"
+                className="p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors cursor-pointer"
+                title="Opciones rápidas"
+                aria-label="Opciones rápidas"
               >
-                <MoreDotIcon className="h-4 w-4" />
+                <svg
+                  className="h-4.5 w-4.5"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <circle cx="3" cy="3" r="1.35" />
+                  <circle cx="8" cy="3" r="1.35" />
+                  <circle cx="13" cy="3" r="1.35" />
+                  <circle cx="3" cy="8" r="1.35" />
+                  <circle cx="8" cy="8" r="1.35" />
+                  <circle cx="13" cy="8" r="1.35" />
+                  <circle cx="3" cy="13" r="1.35" />
+                  <circle cx="8" cy="13" r="1.35" />
+                  <circle cx="13" cy="13" r="1.35" />
+                </svg>
               </button>
 
               {/* Elements Dropdown Menu */}
@@ -420,6 +444,13 @@ const FilaEquipo = observer(
                 onClose={onCloseMenu}
                 className="right-0 top-full mt-1 w-48 text-left z-20 shadow-lg border border-gray-100 dark:border-gray-800"
               >
+                <DropdownItem onClick={() => { onCloseMenu(); onAbrir(); }}>
+                  <span className="flex items-center gap-2">
+                    <UserIcon className="h-4 w-4 text-gray-400" />
+                    <span>Ver perfil</span>
+                  </span>
+                </DropdownItem>
+
                 <DropdownItem
                   onClick={verComo}
                   className={!puedeVerComo ? "opacity-50 pointer-events-none" : ""}

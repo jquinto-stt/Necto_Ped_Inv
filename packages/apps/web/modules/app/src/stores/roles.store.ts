@@ -180,7 +180,7 @@ export const ROLES_SEED: Rol[] = [
   },
   {
     id: "vendedor",
-    nombre: "Vendedor",
+    nombre: "Operador",
     descripcion: "Crea y atiende órdenes, y agenda entregas.",
     capacidades: [
       "orders.read", "orders.create", "orders.confirm", "orders.cancel", "orders.edit",

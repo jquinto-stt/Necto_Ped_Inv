@@ -56,7 +56,7 @@ describe("catálogo de roles", () => {
     const { rolesStore } = await freshRolesStore();
 
     expect(rolesStore.porId("supervisor_pedidos")?.nombre).toBe("Supervisor de pedidos");
-    expect(rolesStore.porId("vendedor")?.nombre).toBe("Vendedor");
+    expect(rolesStore.porId("vendedor")?.nombre).toBe("Operador");
     expect(rolesStore.porId("preparacion")?.nombre).toBe("Preparación");
     expect(rolesStore.porId("personalizado")?.capacidades).toEqual([]);
   });

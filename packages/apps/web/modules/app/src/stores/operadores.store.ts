@@ -221,7 +221,7 @@ const SEED: Operador[] = [
     nombre: "Mateo Vargas",
     email: "mateo.vargas@negocio.com",
     telefono: "+57 321 222 3344",
-    cargo: "Vendedor de Mostrador",
+    cargo: "Operador de Mostrador",
     avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
     estado: "activo",
     modulo: "pedidos",

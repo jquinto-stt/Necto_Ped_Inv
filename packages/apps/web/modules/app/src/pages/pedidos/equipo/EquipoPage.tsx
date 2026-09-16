@@ -232,7 +232,7 @@ export const EquipoPage = observer(() => {
             <Input
               id="eq-cargo"
               value={form.cargo}
-              placeholder="Ej. Vendedora de Mostrador, Despacho"
+              placeholder="Ej. Operador de Mostrador, Despacho"
               onChange={(e) => set("cargo")(e.target.value)}
             />
           </div>
