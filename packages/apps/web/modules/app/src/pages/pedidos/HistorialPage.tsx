@@ -10,7 +10,7 @@ import { Input } from "@/elements/form/input";
 import { Label } from "@/elements/form/label";
 import { Select } from "@/elements/form/select";
 import { DatePicker } from "@/elements/form/date-picker";
-import { pedidosStore } from "@/stores";
+import { pedidosStore, puedeEscribirCliente } from "@/stores";
 import type { Pedido } from "@/stores/pedidos.store";
 import {
   filtrarHistorial,
@@ -92,14 +92,17 @@ const AccionesMenu = observer(
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1 1 0 010-.644C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178a1 1 0 010 .644C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               Ver detalle
             </button>
-            <button
-              type="button"
-              onClick={run(() => abrirWhatsApp(pedido.telefono))}
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-[#17b363] hover:bg-[#17b363]/10"
-            >
-              <WhatsAppIcon />
-              Abrir WhatsApp
-            </button>
+            {/* Escribir al cliente es una acción de canal: `channels.read`. */}
+            {puedeEscribirCliente() && (
+              <button
+                type="button"
+                onClick={run(() => abrirWhatsApp(pedido.telefono))}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-[#17b363] hover:bg-[#17b363]/10"
+              >
+                <WhatsAppIcon />
+                Abrir WhatsApp
+              </button>
+            )}
           </div>
         )}
       </div>

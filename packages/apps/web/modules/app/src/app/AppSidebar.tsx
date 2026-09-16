@@ -122,9 +122,11 @@ const SimulacionBanner = observer(() => {
   const nombre = sessionStore.operadorSimulado?.nombre ?? "Operador";
 
   const salir = () => {
-    // "Volver al principio de todo": limpia la simulación y regresa al login.
+    // `salirSimulacion()` RESTAURA la sesión previa (no la resetea), así que
+    // volvemos al inicio del admin y no al login. Antes esto mandaba a /login
+    // porque la salida limpiaba toda la sesión.
     sessionStore.salirSimulacion();
-    navigate("/login");
+    navigate(sessionStore.moduloEntryPath);
   };
 
   return (
@@ -132,22 +134,22 @@ const SimulacionBanner = observer(() => {
       {showExpanded ? (
         <>
           <p className="text-xs font-semibold uppercase tracking-wider text-warning-600 dark:text-orange-400">
-            Modo simulación
+            Viendo como
           </p>
           <p className="mt-1 truncate text-sm font-medium text-gray-800 dark:text-white/90">{nombre}</p>
           <button
             onClick={salir}
             className="mt-2 text-xs font-medium text-warning-600 underline hover:text-warning-700 dark:text-orange-400"
           >
-            Salir de simulación
+            Salir de vista
           </button>
         </>
       ) : (
         <button
           onClick={salir}
-          aria-label="Salir de simulación"
+          aria-label="Salir de vista"
           className="flex w-full items-center justify-center text-warning-600 dark:text-orange-400"
-          title="Modo simulación — salir"
+          title="Viendo como — salir"
         >
           <ArrowRightIcon />
         </button>
@@ -164,17 +166,35 @@ const SidebarContent = observer(() => {
   const { pathname } = useLocation();
   const isActive = (path: string) => pathname === path;
 
-  // El menú se adapta a los módulos que el usuario eligió en /seleccionar.
-  // Si aún no hay selección (p. ej. entró por una URL directa), mostramos
-  // ambas secciones para no dejar el sidebar vacío.
-  const sinSeleccion = sessionStore.modulos.length === 0;
-  const verTurnos = sinSeleccion || sessionStore.hasModulo("turnos");
-  const verAgendamiento = sinSeleccion || sessionStore.hasModulo("agendamiento");
-  const verPedidos = sinSeleccion || sessionStore.hasModulo("pedidos");
+  // El menú se adapta a los módulos de la sesión. Ya NO hay fallback
+  // "fail-open": `RequireSession` garantiza que hay una sesión utilizable antes
+  // de renderizar el shell, así que mostrar todo cuando no hay selección era
+  // justamente el agujero que se cerró (contrato §2 / invariante C3).
+  const verTurnos = sessionStore.hasModulo("turnos");
+  const verAgendamiento = sessionStore.hasModulo("agendamiento");
+  const verPedidos = sessionStore.hasModulo("pedidos");
 
-  // En modo simulación, cada sección solo se muestra si el operador la tiene
-  // permitida. Fuera de simulación (admin), puedeVer() siempre devuelve true.
-  const puede = (seccionId: string) => sessionStore.puedeVer(seccionId);
+  // Cada bloque pregunta por SU módulo: los ids de sección se repiten entre
+  // módulos (`inicio`, `crear`), así que `puedeVerSeccion(modulo, id)` es la
+  // firma canónica (contrato §1.5).
+  //
+  // El ítem "Operadores" (turnos/agendamiento) es legado congelado: usa
+  // `accesoTotal` hasta que esos módulos migren a capacidades (contrato §5).
+  // El de pedidos ya usa la capacidad real `team.manage`.
+  const puedeTurnos = (seccionId: string) => sessionStore.puedeVerSeccion("turnos", seccionId);
+  const puedeAgendamiento = (seccionId: string) => sessionStore.puedeVerSeccion("agendamiento", seccionId);
+  const puedePedidos = (seccionId: string) => sessionStore.puedeVerSeccion("pedidos", seccionId);
+  const puedeGestionarEquipo = sessionStore.hasPermission("team.manage");
+
+  /**
+   * Matcher de subárbol, para ítems que tienen rutas hijas.
+   *
+   * El perfil de una persona es `/pedidos/equipo/:id`, así que un `isActive`
+   * exacto apagaría el ítem "Equipo" al abrir un perfil. No se usa en general
+   * porque un prefijo ingenuo marcaría de más (`/pedidos` también marcaría
+   * `/pedidos/crear`).
+   */
+  const esRutaConHijas = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
 
   return (
     <nav className="flex flex-col flex-1">
@@ -186,12 +206,12 @@ const SidebarContent = observer(() => {
           <div>
             <MenuSectionHeader title="Turnos" />
             <ul className="flex flex-col gap-1">
-              {puede("inicio") && <MenuItem icon={<GridIcon />} name="Inicio" path="/dashboard" isActive={isActive} />}
-              {puede("turnos") && <MenuItem icon={<TaskIcon />} name="Mis Turnos" path="/turnos" isActive={isActive} />}
-              {puede("recepcion") && <MenuItem icon={<PlusIcon />} name="Crear turno" path="/recepcion" isActive={isActive} />}
-              {puede("colas") && <MenuItem icon={<ListIcon />} name="Filas" path="/colas" isActive={isActive} />}
-              {puede("encuestas") && <MenuItem icon={<ShootingStarIcon />} name="Encuestas" path="/encuestas" isActive={isActive} />}
-              {sessionStore.isAdmin && (
+              {puedeTurnos("inicio") && <MenuItem icon={<GridIcon />} name="Inicio" path="/dashboard" isActive={isActive} />}
+              {puedeTurnos("turnos") && <MenuItem icon={<TaskIcon />} name="Mis Turnos" path="/turnos" isActive={isActive} />}
+              {puedeTurnos("recepcion") && <MenuItem icon={<PlusIcon />} name="Crear turno" path="/recepcion" isActive={isActive} />}
+              {puedeTurnos("colas") && <MenuItem icon={<ListIcon />} name="Filas" path="/colas" isActive={isActive} />}
+              {puedeTurnos("encuestas") && <MenuItem icon={<ShootingStarIcon />} name="Encuestas" path="/encuestas" isActive={isActive} />}
+              {sessionStore.accesoTotal && (
                 <MenuItem icon={<GroupIcon />} name="Operadores" path="/turnos/operadores" isActive={isActive} />
               )}
             </ul>
@@ -203,12 +223,12 @@ const SidebarContent = observer(() => {
           <div>
             <MenuSectionHeader title="Agendamiento" />
             <ul className="flex flex-col gap-1">
-              {puede("profesionales") && <MenuItem icon={<GroupIcon />} name="Profesionales" path="/agendamiento/profesionales" isActive={isActive} />}
-              {puede("agenda") && <MenuItem icon={<ListIcon />} name="Agenda" path="/agendamiento" isActive={isActive} />}
-              {puede("calendario") && <MenuItem icon={<CalenderIcon />} name="Calendario" path="/agendamiento/calendario" isActive={isActive} />}
-              {puede("crear") && <MenuItem icon={<PlusIcon />} name="Agendar cita" path="/agendamiento/crear" isActive={isActive} />}
-              {puede("analitica") && <MenuItem icon={<PieChartIcon />} name="Analítica" path="/agendamiento/analitica" isActive={isActive} />}
-              {sessionStore.isAdmin && (
+              {puedeAgendamiento("profesionales") && <MenuItem icon={<GroupIcon />} name="Profesionales" path="/agendamiento/profesionales" isActive={isActive} />}
+              {puedeAgendamiento("agenda") && <MenuItem icon={<ListIcon />} name="Agenda" path="/agendamiento" isActive={isActive} />}
+              {puedeAgendamiento("calendario") && <MenuItem icon={<CalenderIcon />} name="Calendario" path="/agendamiento/calendario" isActive={isActive} />}
+              {puedeAgendamiento("crear") && <MenuItem icon={<PlusIcon />} name="Agendar cita" path="/agendamiento/crear" isActive={isActive} />}
+              {puedeAgendamiento("analitica") && <MenuItem icon={<PieChartIcon />} name="Analítica" path="/agendamiento/analitica" isActive={isActive} />}
+              {sessionStore.accesoTotal && (
                 <MenuItem icon={<GroupIcon />} name="Operadores" path="/agendamiento/operadores" isActive={isActive} />
               )}
             </ul>
@@ -220,13 +240,13 @@ const SidebarContent = observer(() => {
           <div>
             <MenuSectionHeader title="Pedidos" />
             <ul className="flex flex-col gap-1">
-              {puede("inicio") && <MenuItem icon={<GridIcon />} name="Inicio" path="/pedidos/inicio" isActive={isActive} />}
-              {puede("tablero") && <MenuItem icon={<ListIcon />} name="Tablero" path="/pedidos" isActive={isActive} />}
-              {puede("crear") && <MenuItem icon={<PlusIcon />} name="Crear pedido" path="/pedidos/crear" isActive={isActive} />}
-              {puede("historial") && <MenuItem icon={<TaskIcon />} name="Historial" path="/pedidos/historial" isActive={isActive} />}
-              {puede("configuracion") && <MenuItem icon={<PlugInIcon />} name="Configuración" path="/pedidos/config" isActive={isActive} />}
-              {sessionStore.isAdmin && (
-                <MenuItem icon={<GroupIcon />} name="Operadores" path="/pedidos/operadores" isActive={isActive} />
+              {puedePedidos("inicio") && <MenuItem icon={<GridIcon />} name="Inicio" path="/pedidos/inicio" isActive={isActive} />}
+              {puedePedidos("tablero") && <MenuItem icon={<ListIcon />} name="Tablero" path="/pedidos" isActive={isActive} />}
+              {puedePedidos("crear") && <MenuItem icon={<PlusIcon />} name="Crear pedido" path="/pedidos/crear" isActive={isActive} />}
+              {puedePedidos("historial") && <MenuItem icon={<TaskIcon />} name="Historial" path="/pedidos/historial" isActive={isActive} />}
+              {puedePedidos("configuracion") && <MenuItem icon={<PlugInIcon />} name="Configuración" path="/pedidos/config" isActive={isActive} />}
+              {puedeGestionarEquipo && (
+                <MenuItem icon={<GroupIcon />} name="Equipo" path="/pedidos/equipo" isActive={esRutaConHijas} />
               )}
             </ul>
           </div>

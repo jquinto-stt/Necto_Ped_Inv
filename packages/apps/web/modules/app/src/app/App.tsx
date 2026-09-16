@@ -11,12 +11,14 @@ import { SurveyPage } from "@/pages/survey";
 import { EncuestasPage, EncuestaCompartir } from "@/pages/encuestas";
 import { DisplayScreen } from "@/pages/display";
 import { AgendaPage, ProfesionalesPage, CalendarioPage, CitaDetallePage, CrearCitaPage, AnaliticaPage } from "@/pages/agendamiento";
-import { TableroPage, CrearPedidoPage, InicioPage as PedidosInicioPage, HistorialPage as PedidosHistorialPage, ConfigPage as PedidosConfigPage } from "@/pages/pedidos";
+import { TableroPage, CrearPedidoPage, InicioPage as PedidosInicioPage, HistorialPage as PedidosHistorialPage, ConfigPage as PedidosConfigPage, EquipoPage, PerfilOperadorPage } from "@/pages/pedidos";
 import { SeleccionarPage } from "@/pages/seleccionar";
 import { SimuladorWhatsApp } from "@/pages/simulador";
-import { OperadorRegistroPage, OperadorLoginPage } from "@/pages/operador";
-import { OperadoresTurnosPage, OperadoresAgendamientoPage, OperadoresPedidosPage } from "@/pages/operadores";
+import { OperadorRegistroPage } from "@/pages/operador";
+import { OperadoresTurnosPage, OperadoresAgendamientoPage } from "@/pages/operadores";
 import { SeccionGuard } from "@/app/SeccionGuard";
+import { RequireSession } from "@/app/RequireSession";
+import { CapabilityGuard } from "@/app/CapabilityGuard";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
 import SignInForm from "@/pages/auth/sign-in";
 import SignUpForm from "@/pages/auth/sign-up";
@@ -114,6 +116,27 @@ const Encuestas = observer(() => {
   return <EncuestasPage />;
 });
 
+/**
+ * RedireccionViendoComo — cierra la antigua ruta `/operador/login`.
+ *
+ * Esa ruta era el simulador de operador ("Viendo como"), una página STANDALONE
+ * fuera de `RequireSession` y por tanto **sin ningún guard**: cualquiera que
+ * escribiera la URL podía impersonar a cualquier operador activo. Ahora la
+ * impersonación es una herramienta de administrador y vive en Equipo
+ * (`/pedidos/equipo`, capacidad `team.manage`), así que aquí solo queda una
+ * redirección.
+ *
+ * Se conserva la ruta en vez de borrarla para no romper enlaces o marcadores
+ * antiguos. El destino depende de la sesión: mandar a Equipo a quien no puede
+ * gestionar el equipo lo dejaría contra el guard, así que va a `/seleccionar`.
+ */
+const RedireccionViendoComo = () => (
+  <Navigate
+    to={sessionStore.hasPermission("team.manage") ? "/pedidos/equipo" : "/seleccionar"}
+    replace
+  />
+);
+
 export default function App() {
   // Load queues from the backend once on startup (falls back to local data).
   useEffect(() => {
@@ -124,9 +147,10 @@ export default function App() {
     <Routes>
       {/* ════════════════════════════════════════════════════════════════════
           RUTAS CON SHELL
-          Páginas que comparten el layout AppShell (sidebar + header)
+          Páginas que comparten el layout AppShell (sidebar + header).
+          RequireSession es la puerta: sin sesión utilizable no se entra (H2).
           ════════════════════════════════════════════════════════════════════ */}
-      <Route element={<AppShell />}>
+      <Route element={<RequireSession><AppShell /></RequireSession>}>
         {/* Turnos — protegidas por SeccionGuard en modo simulación */}
         <Route path="/dashboard" element={<SeccionGuard seccion="inicio"><InicioTurnos /></SeccionGuard>} />
         <Route path="/turnos" element={<SeccionGuard seccion="turnos"><TurnosPage /></SeccionGuard>} />
@@ -140,17 +164,32 @@ export default function App() {
         <Route path="/agendamiento/detalles" element={<SeccionGuard seccion="agenda"><CitaDetallePage /></SeccionGuard>} />
         <Route path="/agendamiento/crear" element={<SeccionGuard seccion="crear"><CrearCitaPage /></SeccionGuard>} />
         <Route path="/agendamiento/analitica" element={<SeccionGuard seccion="analitica"><AnaliticaPage /></SeccionGuard>} />
-        {/* Pedidos — protegidas por SeccionGuard en modo simulación */}
-        <Route path="/pedidos/inicio" element={<SeccionGuard seccion="inicio"><PedidosInicioPage /></SeccionGuard>} />
-        <Route path="/pedidos" element={<SeccionGuard seccion="tablero"><TableroPage /></SeccionGuard>} />
-        <Route path="/pedidos/crear" element={<SeccionGuard seccion="crear"><CrearPedidoPage /></SeccionGuard>} />
-        <Route path="/pedidos/historial" element={<SeccionGuard seccion="historial"><PedidosHistorialPage /></SeccionGuard>} />
-        <Route path="/pedidos/config" element={<SeccionGuard seccion="configuracion"><PedidosConfigPage /></SeccionGuard>} />
-        {/* Solo admin — un operador simulado nunca tiene esta "sección", así que
-            SeccionGuard muestra el aviso de sin acceso si intenta entrar por URL */}
-        <Route path="/turnos/operadores" element={<SeccionGuard seccion="__solo_admin__"><OperadoresTurnosPage /></SeccionGuard>} />
-        <Route path="/agendamiento/operadores" element={<SeccionGuard seccion="__solo_admin__"><OperadoresAgendamientoPage /></SeccionGuard>} />
-        <Route path="/pedidos/operadores" element={<SeccionGuard seccion="__solo_admin__"><OperadoresPedidosPage /></SeccionGuard>} />
+        {/* Pedidos — gobernadas por CAPACIDAD, no por lista de secciones.
+            Turnos y Agendamiento siguen con SeccionGuard (Fase 2 es solo pedidos).
+            Nota: `settings.read` da acceso a la página de configuración, pero
+            guardar cambios requiere además `settings.manage` (gating en la página). */}
+        <Route path="/pedidos/inicio" element={<CapabilityGuard capacidad="orders.read"><PedidosInicioPage /></CapabilityGuard>} />
+        <Route path="/pedidos" element={<CapabilityGuard capacidad="orders.read"><TableroPage /></CapabilityGuard>} />
+        <Route path="/pedidos/crear" element={<CapabilityGuard capacidad="orders.create"><CrearPedidoPage /></CapabilityGuard>} />
+        <Route path="/pedidos/historial" element={<CapabilityGuard capacidad="orders.read"><PedidosHistorialPage /></CapabilityGuard>} />
+        <Route path="/pedidos/config" element={<CapabilityGuard capacidad="settings.read"><PedidosConfigPage /></CapabilityGuard>} />
+        {/* Equipo de pedidos — pantalla nueva (Fase 3).
+            El perfil es una RUTA, no un modal, así que se puede enlazar y
+            recargar. Ambas rutas exigen `team.manage`.
+
+            `/pedidos/operadores` se conserva como redirección para no romper
+            enlaces o marcadores existentes. */}
+        <Route path="/pedidos/equipo" element={<CapabilityGuard capacidad="team.manage"><EquipoPage /></CapabilityGuard>} />
+        <Route path="/pedidos/equipo/:id" element={<CapabilityGuard capacidad="team.manage"><PerfilOperadorPage /></CapabilityGuard>} />
+        <Route path="/pedidos/operadores" element={<Navigate to="/pedidos/equipo" replace />} />
+
+        {/* Equipo — solo para quien puede gestionar el equipo.
+            Antes usaban el centinela `seccion="__solo_admin__"`, un string
+            mágico que no existía en ningún catálogo; ahora es una capacidad
+            real (`team.manage`), asignable a cualquier rol.
+            Turnos y Agendamiento siguen en la pantalla legacy de Operadores. */}
+        <Route path="/turnos/operadores" element={<CapabilityGuard capacidad="team.manage"><OperadoresTurnosPage /></CapabilityGuard>} />
+        <Route path="/agendamiento/operadores" element={<CapabilityGuard capacidad="team.manage"><OperadoresAgendamientoPage /></CapabilityGuard>} />
         <Route path="/configuracion" element={<PlaceholderPage title="Configuracion" />} />
         <Route path="/ayuda" element={<PlaceholderPage title="Ayuda" />} />
       </Route>
@@ -161,7 +200,10 @@ export default function App() {
           ════════════════════════════════════════════════════════════════════ */}
       <Route path="/seleccionar" element={<SeleccionarPage />} />
       <Route path="/operador/registro" element={<OperadorRegistroPage />} />
-      <Route path="/operador/login" element={<OperadorLoginPage />} />
+      {/* Ruta deprecada: la impersonación vive ahora en Equipo. Ver
+          `RedireccionViendoComo`. El componente `OperadorLoginPage` sigue en el
+          repo sin ruta; se borra cuando confirmemos que nadie lo necesita. */}
+      <Route path="/operador/login" element={<RedireccionViendoComo />} />
       <Route path="/wa" element={<SimuladorWhatsApp />} />
       <Route path="/display" element={<DisplayScreen />} />
       <Route path="/s/:token" element={<SurveyPage />} />

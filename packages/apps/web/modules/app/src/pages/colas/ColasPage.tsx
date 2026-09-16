@@ -38,9 +38,12 @@ export const ColasPage = observer(() => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Solo el admin puede crear/editar/activar/eliminar colas. El operador solo
-  // ve, gestiona y comparte las suyas.
-  const esAdmin = sessionStore.isAdmin;
+  // Solo la sesión sin restricción (admin) puede crear/editar/activar/eliminar
+  // colas. El operador solo ve, gestiona y comparte las suyas.
+  //
+  // `accesoTotal` es el puente legado (contrato §5): Turnos está congelado con el
+  // modelo de secciones, así que aún no hay una capacidad `queues.manage`.
+  const sinRestriccion = sessionStore.accesoTotal;
   // En modo simulación de operador, solo sus colas asignadas (admin ve todas).
   const queues = queuesStore.queues.filter((q) => sessionStore.puedeVerCola(q.id));
   const activeCount = queues.filter((q) => q.activa).length;
@@ -151,7 +154,7 @@ export const ColasPage = observer(() => {
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>
         </div>
         {/* Crear fila: solo admin */}
-        {esAdmin && <Button size="sm" onClick={openCreate}>+ Crear fila</Button>}
+        {sinRestriccion && <Button size="sm" onClick={openCreate}>+ Crear fila</Button>}
       </div>
 
       {/* Grid or empty state */}
@@ -163,7 +166,7 @@ export const ColasPage = observer(() => {
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Aun no tienes filas</h3>
-          {esAdmin ? (
+          {sinRestriccion ? (
             <>
               <p className="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">
                 Crea la primera para empezar a recibir turnos por WhatsApp.
@@ -185,7 +188,7 @@ export const ColasPage = observer(() => {
               key={q.id}
               queue={q}
               saturation={queuesStore.saturationOf(q)}
-              readOnly={!esAdmin}
+              readOnly={!sinRestriccion}
               onToggle={(active) => toggleQueue(q.id, active)}
               onManage={() => navigate(`/turnos?cola=${q.id}`)}
               onShare={() => shareQueue(q)}

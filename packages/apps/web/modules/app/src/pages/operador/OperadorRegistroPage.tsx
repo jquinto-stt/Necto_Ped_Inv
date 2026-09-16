@@ -6,9 +6,10 @@ import { Button } from "@/elements/ui/button";
 import { Card } from "@/elements/ui/card";
 import { Input } from "@/elements/form/input";
 import { Label } from "@/elements/form/label";
+import { Select } from "@/elements/form/select";
 import { Textarea } from "@/elements/form/textarea";
 import { ThemeToggleButton } from "@/shell";
-import { sessionStore } from "@/stores";
+import { operadoresStore, sessionStore, type Modulo } from "@/stores";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ICONS
@@ -28,6 +29,15 @@ interface OperadorForm {
   nombre: string;
   email: string;
   telefono: string;
+  /**
+   * Módulo al que se pide acceso. `""` = todavía sin elegir.
+   *
+   * Es `string` (y no `Modulo | ""`) para que el setter genérico `set()` siga
+   * sirviendo; el valor se valida al enviar con `esModuloValido()`, que es un
+   * type guard. Validar es mejor que castear: el `Select` es uncontrolled y
+   * preferimos no fiarnos de lo que emite.
+   */
+  modulo: string;
   adminEmail: string;
   nota: string;
 }
@@ -36,9 +46,26 @@ const EMPTY_FORM: OperadorForm = {
   nombre: "",
   email: "",
   telefono: "",
+  modulo: "",
   adminEmail: "",
   nota: "",
 };
+
+/** Módulos a los que se puede solicitar acceso, con su etiqueta legible. */
+const MODULOS: { value: Modulo; label: string }[] = [
+  { value: "turnos", label: "Turnos" },
+  { value: "agendamiento", label: "Agendamiento" },
+  { value: "pedidos", label: "Pedidos" },
+];
+
+/**
+ * Type guard: ¿el valor pertenece al catálogo `MODULOS`?
+ *
+ * Estrecha `string` a `Modulo` **validando de verdad**, en vez de castear. El
+ * `Select` es uncontrolled, así que preferimos comprobar su salida.
+ */
+const esModuloValido = (valor: string): valor is Modulo =>
+  MODULOS.some((m) => m.value === valor);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FIELD (Label + Input del catálogo Elements)
@@ -81,28 +108,60 @@ const Field = ({ id, label, type = "text", value, required, placeholder, onChang
  * deja sus datos, que (mock, sin backend) se envían como notificación al
  * administrador para darlo de alta.
  *
- * Vista construida con el flujo Elements: Card + Label + Input + Textarea +
- * Button del catálogo. Al enviar, el formulario se reemplaza por una tarjeta
- * de éxito.
+ * **El envío es real dentro del mock:** llama a `operadoresStore.solicitar()`,
+ * que crea un operador en estado `pendiente`. Antes esto solo cambiaba a un
+ * estado de éxito visual y no creaba nada, así que los `pendiente` de la tabla
+ * venían únicamente del SEED. Ahora el admin lo ve en Equipo → Pendientes y lo
+ * aprueba, y desde el perfil le asigna un rol.
+ *
+ * Vista construida con el flujo Elements: Card + Label + Input + Select +
+ * Textarea + Button del catálogo. Al enviar, el formulario se reemplaza por una
+ * tarjeta de éxito.
+ *
+ * @remarks
+ * Sin backend no hay envío de correo. El campo "Correo del administrador a
+ * notificar" se conserva porque forma parte del relato de la solicitud (y lo
+ * consumirá el backend real), pero hoy **no dispara nada**: la notificación es
+ * que la solicitud aparece como `pendiente` en Equipo.
  */
 export const OperadorRegistroPage = observer(() => {
   const navigate = useNavigate();
-  const [form, setForm] = useState<OperadorForm>(EMPTY_FORM);
+  // El módulo se pre-selecciona si el usuario eligió uno solo en /seleccionar.
+  // La inicialización es perezosa para que se recalcule en cada montaje y no
+  // quede congelada con el valor de la primera visita a la página.
+  const [form, setForm] = useState<OperadorForm>(() => ({
+    ...EMPTY_FORM,
+    modulo: sessionStore.modulos.length === 1 ? sessionStore.modulos[0] : "",
+  }));
   const [enviado, setEnviado] = useState(false);
 
   const set = (campo: keyof OperadorForm) => (value: string) =>
     setForm((prev) => ({ ...prev, [campo]: value }));
 
-  // Los 4 primeros campos son obligatorios; la nota es opcional.
-  const requeridosCompletos =
-    form.nombre.trim() !== "" &&
-    form.email.trim() !== "" &&
-    form.telefono.trim() !== "" &&
-    form.adminEmail.trim() !== "";
+  /**
+   * Datos listos para enviar, o `null` si falta algún campo obligatorio.
+   *
+   * Es la única definición de "formulario completo": la usan tanto el estado
+   * del botón como `enviar()`, así que no pueden desincronizarse.
+   */
+  const solicitudValida = (): { nombre: string; email: string; telefono: string; modulo: Modulo } | null => {
+    const nombre = form.nombre.trim();
+    const email = form.email.trim();
+    const telefono = form.telefono.trim();
+    // El correo del administrador también es obligatorio (ver @remarks).
+    const adminEmail = form.adminEmail.trim();
+    if (!nombre || !email || !telefono || !adminEmail) return null;
+    if (!esModuloValido(form.modulo)) return null;
+    return { nombre, email, telefono, modulo: form.modulo };
+  };
+
+  const requeridosCompletos = solicitudValida() !== null;
 
   const enviar = () => {
-    if (!requeridosCompletos) return;
-    // Mock: no hay backend. Solo cambiamos al estado de éxito.
+    const datos = solicitudValida();
+    if (!datos) return;
+    // Mock, sin backend: la solicitud entra en la lista de pendientes del admin.
+    operadoresStore.solicitar(datos);
     setEnviado(true);
   };
 
@@ -164,6 +223,21 @@ export const OperadorRegistroPage = observer(() => {
                     placeholder="+57 300 000 0000"
                     onChange={set("telefono")}
                   />
+                  {/* Módulo: la solicitud es PARA un módulo concreto, así que el
+                      admin sabe qué equipo revisar. `Select` no acepta `id`
+                      (limitación del componente), de ahí el `aria-label`. */}
+                  <div>
+                    <Label htmlFor="op-modulo">
+                      Módulo al que solicitas acceso <span className="text-error-500">*</span>
+                    </Label>
+                    <Select
+                      options={MODULOS}
+                      placeholder="Elige un módulo"
+                      defaultValue={form.modulo}
+                      onChange={set("modulo")}
+                      aria-label="Módulo al que solicitas acceso"
+                    />
+                  </div>
                   <Field
                     id="op-admin-email"
                     label="Correo del administrador a notificar"
@@ -206,7 +280,12 @@ export const OperadorRegistroPage = observer(() => {
                   Tu solicitud fue enviada
                 </h2>
                 <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-                  El administrador la revisará y te dará acceso. Te avisaremos cuando tu cuenta esté lista.
+                  Pediste acceso a{" "}
+                  <span className="font-medium text-gray-700 dark:text-gray-300">
+                    {MODULOS.find((m) => m.value === form.modulo)?.label ?? "el módulo"}
+                  </span>
+                  . El administrador la revisará y te asignará un rol. Te avisaremos cuando tu cuenta
+                  esté lista.
                 </p>
                 <Button size="sm" className="mt-6" onClick={volverAlInicio}>
                   Volver al inicio
