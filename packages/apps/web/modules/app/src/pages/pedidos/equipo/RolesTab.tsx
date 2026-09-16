@@ -6,6 +6,7 @@ import { Button } from "@/elements/ui/button";
 import { Input } from "@/elements/form/input";
 import { Label } from "@/elements/form/label";
 import { Switch } from "@/elements/form/switch";
+import { TrashBinIcon } from "@/icons";
 import { CAPACIDAD_GRUPOS, CAPACIDAD_LABEL, rolesStore, type Capacidad, type Rol } from "@/stores";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -46,24 +47,42 @@ export const RolesTab = observer(() => {
 
         <div className="flex flex-col gap-2">
           {rolesStore.roles.map((rol) => (
-            <button
+            <div
               key={rol.id}
-              type="button"
               onClick={() => setSeleccionadoId(rol.id)}
-              className={`w-full rounded-xl border p-3 text-left transition-colors ${
+              className={`group relative flex items-center justify-between w-full rounded-xl border p-3 text-left transition-colors cursor-pointer ${
                 rol.id === seleccionadoId
                   ? "border-brand-500 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/10"
                   : "border-gray-200 bg-white hover:border-brand-300 dark:border-gray-800 dark:bg-white/[0.02] dark:hover:border-brand-700"
               }`}
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm font-medium text-gray-800 dark:text-white/90">{rol.nombre}</span>
-                {rol.sistema && <Badge color="light" size="xs">Sistema</Badge>}
+              <div className="min-w-0 flex-1 pr-2">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium text-gray-800 dark:text-white/90">{rol.nombre}</span>
+                  {rol.sistema && <Badge color="light" size="xs">Sistema</Badge>}
+                </div>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {rol.capacidades.length} de 16 capacidades
+                </p>
               </div>
-              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                {rol.capacidades.length} de 16 capacidades
-              </p>
-            </button>
+
+              {!rol.sistema && (
+                <button
+                  type="button"
+                  title="Eliminar este rol"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    rolesStore.eliminar(rol.id);
+                    if (seleccionadoId === rol.id) {
+                      setSeleccionadoId(rolesStore.roles[0]?.id ?? null);
+                    }
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-950/30 rounded-lg opacity-80 group-hover:opacity-100 transition-all"
+                >
+                  <TrashBinIcon className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       </div>

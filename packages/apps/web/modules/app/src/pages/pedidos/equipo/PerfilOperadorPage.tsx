@@ -136,6 +136,11 @@ const PerfilContent = observer(({ op }: { op: Operador }) => {
     setDatosGuardados(true);
   };
 
+  const rechazar = () => {
+    operadoresStore.rechazar(op.id);
+    navigate("/pedidos/equipo");
+  };
+
   const puedeVerComo = op.estado === "activo";
   const verComo = () => {
     if (!puedeVerComo) return;
@@ -181,7 +186,19 @@ const PerfilContent = observer(({ op }: { op: Operador }) => {
             </Button>
           </span>
           {op.estado === "pendiente" && (
-            <Button size="sm" onClick={() => operadoresStore.aprobar(op.id)}>Aprobar</Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-error-600 hover:bg-error-50 border-error-200 dark:border-error-800"
+                onClick={rechazar}
+              >
+                Rechazar
+              </Button>
+              <Button size="sm" onClick={() => operadoresStore.aprobar(op.id)}>
+                Aprobar
+              </Button>
+            </>
           )}
           {op.estado === "activo" && (
             <Button size="sm" variant="outline" onClick={() => operadoresStore.desactivar(op.id)}>Suspender</Button>
@@ -193,11 +210,26 @@ const PerfilContent = observer(({ op }: { op: Operador }) => {
       </div>
 
       {op.estado === "pendiente" && (
-        <div className="mb-6 rounded-xl border border-warning-200 bg-warning-50 p-4 dark:border-warning-500/30 dark:bg-warning-500/10">
-          <p className="text-sm font-medium text-warning-700 dark:text-warning-300">Solicitud pendiente</p>
-          <p className="mt-0.5 text-xs text-warning-600 dark:text-warning-400">
-            Asigna un rol y pulsa «Aprobar» para darle acceso. Hasta entonces no puede entrar.
-          </p>
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4 dark:border-warning-500/30 dark:bg-warning-500/10">
+          <div>
+            <p className="text-sm font-medium text-warning-700 dark:text-warning-300">Solicitud pendiente</p>
+            <p className="mt-0.5 text-xs text-warning-600 dark:text-warning-400">
+              Asigna un rol y pulsa «Aprobar» para darle acceso, o «Rechazar» para descartar la solicitud.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-error-600 hover:bg-error-50 border-error-200 dark:border-error-800"
+              onClick={rechazar}
+            >
+              Rechazar solicitud
+            </Button>
+            <Button size="sm" onClick={() => operadoresStore.aprobar(op.id)}>
+              Aprobar
+            </Button>
+          </div>
         </div>
       )}
 

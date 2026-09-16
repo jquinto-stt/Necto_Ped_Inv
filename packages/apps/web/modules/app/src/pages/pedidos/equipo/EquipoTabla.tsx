@@ -441,14 +441,24 @@ const FilaEquipo = observer(
                 <hr className="my-1 border-gray-100 dark:border-gray-800" />
 
                 {op.estado === "pendiente" && (
-                  <DropdownItem
-                    onClick={() => {
-                      operadoresStore.aprobar(op.id);
-                      onCloseMenu();
-                    }}
-                  >
-                    <span className="text-emerald-600 font-medium">Aprobar operador</span>
-                  </DropdownItem>
+                  <>
+                    <DropdownItem
+                      onClick={() => {
+                        operadoresStore.aprobar(op.id);
+                        onCloseMenu();
+                      }}
+                    >
+                      <span className="text-emerald-600 font-medium">Aprobar operador</span>
+                    </DropdownItem>
+                    <DropdownItem
+                      onClick={() => {
+                        operadoresStore.rechazar(op.id);
+                        onCloseMenu();
+                      }}
+                    >
+                      <span className="text-error-600 font-medium">Rechazar solicitud</span>
+                    </DropdownItem>
+                  </>
                 )}
 
                 {op.estado === "activo" && (

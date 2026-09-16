@@ -461,6 +461,11 @@ export class OperadoresStore {
     this.emit();
   }
 
+  /** Rechaza y descarta una solicitud pendiente. */
+  rechazar(id: string) {
+    this.eliminar(id);
+  }
+
   /** Desactiva un operador (sin eliminarlo). */
   desactivar(id: string) {
     const op = this.porId(id);
