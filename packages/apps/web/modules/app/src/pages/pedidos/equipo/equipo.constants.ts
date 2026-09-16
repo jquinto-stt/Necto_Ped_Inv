@@ -22,7 +22,7 @@ import type { OperadorEstado } from "@/stores/operadores.store";
  */
 export const ESTADO_META: Record<OperadorEstado, { label: string; color: BadgeColor; descripcion: string }> = {
   activo: {
-    label: "Activa",
+    label: "Activo",
     color: "success",
     descripcion: "Puede entrar y operar según lo que le permita su rol.",
   },
@@ -32,7 +32,7 @@ export const ESTADO_META: Record<OperadorEstado, { label: string; color: BadgeCo
     descripcion: "Solicitó acceso. Falta aprobarla y asignarle un rol.",
   },
   inactivo: {
-    label: "Suspendida",
+    label: "Suspendido",
     color: "light",
     descripcion: "Sin acceso. Su historial se conserva.",
   },
@@ -42,14 +42,14 @@ export const ESTADO_META: Record<OperadorEstado, { label: string; color: BadgeCo
 export type TabEquipo = "todos" | "pendientes" | "roles";
 
 /**
- * Sentinel del filtro de estado ("Todas"). Se usa una cadena imposible en vez
+ * Sentinel del filtro de estado ("Todos"). Se usa una cadena imposible en vez
  * de `null` para que el valor del `<select>` siga siendo un string.
  */
 export const FILTRO_ESTADO_TODAS = "__todas__";
 
 /** Opciones del filtro de estado (para el `<Select>`). */
 export const OPCIONES_FILTRO_ESTADO: { value: string; label: string }[] = [
-  { value: FILTRO_ESTADO_TODAS, label: "Todas" },
+  { value: FILTRO_ESTADO_TODAS, label: "Todos" },
   { value: "activo", label: ESTADO_META.activo.label },
   { value: "pendiente", label: ESTADO_META.pendiente.label },
   { value: "inactivo", label: ESTADO_META.inactivo.label },

@@ -170,8 +170,8 @@ const Avatar: React.FC<AvatarProps> = ({
   };
 
   return (
-    <div className={cn("relative rounded-full", sizeClasses[size], className)}>
-      {imgFailed ? (
+    <div className={cn("relative rounded-full shrink-0", sizeClasses[size], className)}>
+      {!src || imgFailed ? (
         <div className={cn(
           "flex items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 w-full h-full",
           initials && initialsFontSize[size]
@@ -187,7 +187,12 @@ const Avatar: React.FC<AvatarProps> = ({
           )}
         </div>
       ) : (
-        <img src={src} alt={alt} className="object-cover rounded-full" onError={handleError} />
+        <img
+          src={src}
+          alt={alt}
+          className="h-full w-full object-cover rounded-full aspect-square"
+          onError={handleError}
+        />
       )}
 
       {/* Status Indicator */}

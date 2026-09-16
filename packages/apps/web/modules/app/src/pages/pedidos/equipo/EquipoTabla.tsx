@@ -12,7 +12,7 @@ import {
   UserCircleIcon,
 } from "@/icons";
 import { operadoresStore, rolesStore, sessionStore, type Operador } from "@/stores";
-import { resumenGrupos } from "./equipo.constants";
+import { resumenGrupos, ESTADO_META } from "./equipo.constants";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TABLA DEL EQUIPO (Elements UI)
@@ -305,16 +305,13 @@ const FilaEquipo = observer(
                 <span className="font-semibold text-sm text-gray-900 dark:text-white truncate">
                   {op.nombre}
                 </span>
-                {esPendiente && (
-                  <Badge color="warning" size="xs" className="font-medium">
-                    Pendiente
-                  </Badge>
-                )}
-                {op.estado === "inactivo" && (
-                  <Badge color="light" size="xs" className="font-medium text-gray-500">
-                    Suspendido
-                  </Badge>
-                )}
+                <Badge
+                  color={esPendiente ? "warning" : (ESTADO_META[op.estado]?.color ?? "light")}
+                  size="xs"
+                  className={op.estado === "inactivo" ? "font-medium text-gray-500" : "font-medium"}
+                >
+                  {esPendiente ? "Pendiente" : (ESTADO_META[op.estado]?.label ?? op.estado)}
+                </Badge>
               </div>
               <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
                 {op.cargo || op.email}
