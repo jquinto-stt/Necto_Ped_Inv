@@ -154,7 +154,7 @@ const GrupoSection = observer(
         <tr
           className={
             grupo.esPendiente
-              ? "bg-amber-50/50 dark:bg-amber-950/20"
+              ? "bg-warning-50/30 dark:bg-warning-500/10"
               : "bg-gray-50/40 dark:bg-white/[0.01]"
           }
         >
@@ -163,19 +163,19 @@ const GrupoSection = observer(
               <span
                 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
                   grupo.esPendiente
-                    ? "text-amber-700 dark:text-amber-400"
+                    ? "text-warning-700 dark:text-warning-400"
                     : "text-gray-500 dark:text-gray-400"
                 }`}
               >
                 {grupo.esPendiente && (
-                  <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="inline-block h-2 w-2 rounded-full bg-warning-500 animate-pulse" />
                 )}
                 {grupo.titulo} ({grupo.operadores.length})
               </span>
               <div
                 className={`h-px flex-1 border-b border-dashed ${
                   grupo.esPendiente
-                    ? "border-amber-300 dark:border-amber-800"
+                    ? "border-warning-300 dark:border-warning-500/30"
                     : "border-gray-200 dark:border-gray-800"
                 }`}
               />
@@ -234,47 +234,49 @@ const FilaEquipo = observer(
       navigate(sessionStore.homePathActual);
     };
 
-    // Determinación del badge de Rol
-    let userTypeConfig = {
+    // Determinación del badge de Rol con tokens NECTO
+    let userTypeConfig: { label: string; variant: "solid" | "light"; color: "primary" | "dark" | "light" | "info" } = {
       label: rol?.nombre || "Operador",
-      className: "bg-gray-800 text-white dark:bg-gray-700",
+      variant: "solid",
+      color: "dark",
     };
 
     if (op.rolId === "admin_tienda") {
       userTypeConfig = {
         label: "Admin",
-        className: "bg-[#635BFF] text-white",
+        variant: "solid",
+        color: "primary", // Necto Brand Orange (#FF3F1A)
       };
     } else if (op.rolId === "supervisor_pedidos") {
       userTypeConfig = {
         label: "Supervisor",
-        className: "bg-blue-600 text-white",
+        variant: "solid",
+        color: "dark",
       };
     } else if (op.rolId === "vendedor") {
       userTypeConfig = {
         label: "Vendedor",
-        className: "bg-slate-700 text-white",
+        variant: "light",
+        color: "dark",
       };
     }
 
-    // Determinación del badge de Acceso
-    let accessBadge = {
+    // Determinación del badge de Acceso con tokens NECTO
+    let accessBadge: { label: string; color: "primary" | "warning" | "light" } = {
       label: esPendiente ? "Sin acceso aún" : "Estándar",
-      className: esPendiente
-        ? "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-        : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+      color: esPendiente ? "warning" : "light",
     };
 
     if (!esPendiente) {
       if (op.rolId === "admin_tienda" || capacidades.length >= 16) {
         accessBadge = {
           label: "Acceso Total",
-          className: "bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300",
+          color: "primary", // Necto Brand Tint
         };
       } else if (ajustes) {
         accessBadge = {
           label: "Personalizado",
-          className: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+          color: "warning", // Necto Warning Tint
         };
       }
     }
@@ -283,7 +285,7 @@ const FilaEquipo = observer(
       <TableRow
         className={`transition-colors ${
           esPendiente
-            ? "bg-amber-50/20 dark:bg-amber-950/10 hover:bg-amber-50/40"
+            ? "bg-warning-50/20 dark:bg-warning-500/10 hover:bg-warning-50/40"
             : "hover:bg-gray-50/60 dark:hover:bg-white/[0.02]"
         }`}
       >
@@ -296,7 +298,7 @@ const FilaEquipo = observer(
               size="medium"
               status={esPendiente ? "busy" : op.estado === "activo" ? "online" : "none"}
               alt={op.nombre}
-              className="ring-2 ring-gray-100 dark:ring-gray-800 shadow-sm flex-shrink-0"
+              className="ring-2 ring-gray-100 dark:ring-gray-800 shadow-xs flex-shrink-0"
             />
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2">
@@ -325,7 +327,7 @@ const FilaEquipo = observer(
         <TableCell className="py-4">
           <div className="flex flex-wrap items-center gap-1.5 cursor-pointer" onClick={onAbrir}>
             {esPendiente ? (
-              <span className="text-xs italic text-amber-700 dark:text-amber-400">
+              <span className="text-xs italic text-warning-700 dark:text-warning-400">
                 Se habilitarán al aprobar la solicitud
               </span>
             ) : grupos.length > 0 ? (
@@ -359,9 +361,9 @@ const FilaEquipo = observer(
           <div className="flex items-center gap-2">
             {/* Rol Badge con icono */}
             <Badge
-              variant="solid"
+              variant={userTypeConfig.variant}
+              color={userTypeConfig.color}
               size="sm"
-              className={`${userTypeConfig.className} font-medium px-2.5 py-0.5 rounded-lg shadow-sm`}
               startIcon={<UserIcon className="h-3 w-3 stroke-current" />}
             >
               {userTypeConfig.label}
@@ -370,8 +372,8 @@ const FilaEquipo = observer(
             {/* Acceso Badge */}
             <Badge
               variant="light"
+              color={accessBadge.color}
               size="sm"
-              className={`${accessBadge.className} font-medium px-2.5 py-0.5 rounded-lg`}
             >
               {accessBadge.label}
             </Badge>
@@ -386,7 +388,7 @@ const FilaEquipo = observer(
               <button
                 type="button"
                 onClick={() => operadoresStore.aprobar(op.id)}
-                className="px-3 py-1 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-colors cursor-pointer"
+                className="px-3 py-1 text-xs font-semibold rounded-lg bg-success-500 text-white hover:bg-success-600 shadow-xs transition-colors cursor-pointer"
               >
                 Aprobar
               </button>
@@ -395,7 +397,7 @@ const FilaEquipo = observer(
             {/* Botón Ver perfil */}
             <button
               onClick={onAbrir}
-              className="inline-flex items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
+              className="inline-flex items-center gap-1 text-sm font-semibold text-brand-500 hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
             >
               <span>Ver perfil</span>
               <span className="text-xs">&gt;</span>
@@ -448,7 +450,7 @@ const FilaEquipo = observer(
                         onCloseMenu();
                       }}
                     >
-                      <span className="text-emerald-600 font-medium">Aprobar operador</span>
+                      <span className="text-success-600 font-medium">Aprobar operador</span>
                     </DropdownItem>
                     <DropdownItem
                       onClick={() => {
@@ -468,7 +470,7 @@ const FilaEquipo = observer(
                       onCloseMenu();
                     }}
                   >
-                    <span className="text-amber-600 font-medium">Suspender</span>
+                    <span className="text-warning-600 font-medium">Suspender</span>
                   </DropdownItem>
                 )}
 
@@ -479,7 +481,7 @@ const FilaEquipo = observer(
                       onCloseMenu();
                     }}
                   >
-                    <span className="text-emerald-600 font-medium">Activar</span>
+                    <span className="text-success-600 font-medium">Activar</span>
                   </DropdownItem>
                 )}
               </Dropdown>
