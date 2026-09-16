@@ -34,6 +34,7 @@ function obtenerIniciales(nombre: string): string {
 interface GrupoEquipo {
   id: string;
   titulo: string;
+  esPendiente?: boolean;
   operadores: Operador[];
 }
 
@@ -49,31 +50,49 @@ export const EquipoTabla = observer(({ operadores }: { operadores: Operador[] })
     );
   }
 
-  // Agrupación por rol funcional para jerarquía visual
-  const grupos: GrupoEquipo[] = [
+  // Separar operadores pendientes de los aprobados para visibilidad inmediata
+  const pendientesOps = operadores.filter((o) => o.estado === "pendiente");
+  const noPendientes = operadores.filter((o) => o.estado !== "pendiente");
+
+  const grupos: GrupoEquipo[] = [];
+
+  // Grupo prioritario de pendientes de aprobación si existen
+  if (pendientesOps.length > 0) {
+    grupos.push({
+      id: "pendientes",
+      titulo: "Pendientes de aprobación",
+      esPendiente: true,
+      operadores: pendientesOps,
+    });
+  }
+
+  // Agrupación de operadores aprobados / activos / inactivos por rol
+  grupos.push(
     {
       id: "admins",
       titulo: "Administradores",
-      operadores: operadores.filter((o) => o.rolId === "admin_tienda"),
+      operadores: noPendientes.filter((o) => o.rolId === "admin_tienda"),
     },
     {
       id: "supervisores",
       titulo: "Supervisores",
-      operadores: operadores.filter((o) => o.rolId === "supervisor_pedidos"),
+      operadores: noPendientes.filter((o) => o.rolId === "supervisor_pedidos"),
     },
     {
       id: "vendedores",
       titulo: "Vendedores y Operadores",
-      operadores: operadores.filter((o) => o.rolId === "vendedor"),
+      operadores: noPendientes.filter((o) => o.rolId === "vendedor"),
     },
     {
       id: "otros",
       titulo: "Otros Miembros",
-      operadores: operadores.filter(
+      operadores: noPendientes.filter(
         (o) => o.rolId !== "admin_tienda" && o.rolId !== "supervisor_pedidos" && o.rolId !== "vendedor"
       ),
-    },
-  ].filter((g) => g.operadores.length > 0);
+    }
+  );
+
+  const gruposVisibles = grupos.filter((g) => g.operadores.length > 0);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-white/[0.03]">
@@ -97,7 +116,7 @@ export const EquipoTabla = observer(({ operadores }: { operadores: Operador[] })
           </TableHeader>
 
           <TableBody>
-            {grupos.map((grupo) => (
+            {gruposVisibles.map((grupo) => (
               <GrupoSection
                 key={grupo.id}
                 grupo={grupo}
@@ -132,13 +151,34 @@ const GrupoSection = observer(
     return (
       <>
         {/* Encabezado de grupo con separador punteado */}
-        <tr className="bg-gray-50/40 dark:bg-white/[0.01]">
+        <tr
+          className={
+            grupo.esPendiente
+              ? "bg-amber-50/50 dark:bg-amber-950/20"
+              : "bg-gray-50/40 dark:bg-white/[0.01]"
+          }
+        >
           <td colSpan={4} className="px-6 py-3">
             <div className="flex items-center gap-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <span
+                className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
+                  grupo.esPendiente
+                    ? "text-amber-700 dark:text-amber-400"
+                    : "text-gray-500 dark:text-gray-400"
+                }`}
+              >
+                {grupo.esPendiente && (
+                  <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                )}
                 {grupo.titulo} ({grupo.operadores.length})
               </span>
-              <div className="h-px flex-1 border-b border-dashed border-gray-200 dark:border-gray-800" />
+              <div
+                className={`h-px flex-1 border-b border-dashed ${
+                  grupo.esPendiente
+                    ? "border-amber-300 dark:border-amber-800"
+                    : "border-gray-200 dark:border-gray-800"
+                }`}
+              />
             </div>
           </td>
         </tr>
@@ -184,6 +224,7 @@ const FilaEquipo = observer(
     const capacidades = rolesStore.capacidadesEfectivas(op);
     const grupos = resumenGrupos(capacidades);
     const ajustes = tieneAjustes(op);
+    const esPendiente = op.estado === "pendiente";
     const puedeVerComo = op.estado === "activo";
 
     const verComo = () => {
@@ -218,24 +259,34 @@ const FilaEquipo = observer(
 
     // Determinación del badge de Acceso
     let accessBadge = {
-      label: "Estándar",
-      className: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+      label: esPendiente ? "Sin acceso aún" : "Estándar",
+      className: esPendiente
+        ? "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+        : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
     };
 
-    if (op.rolId === "admin_tienda" || capacidades.length >= 16) {
-      accessBadge = {
-        label: "Acceso Total",
-        className: "bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300",
-      };
-    } else if (ajustes) {
-      accessBadge = {
-        label: "Personalizado",
-        className: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
-      };
+    if (!esPendiente) {
+      if (op.rolId === "admin_tienda" || capacidades.length >= 16) {
+        accessBadge = {
+          label: "Acceso Total",
+          className: "bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300",
+        };
+      } else if (ajustes) {
+        accessBadge = {
+          label: "Personalizado",
+          className: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+        };
+      }
     }
 
     return (
-      <TableRow className="hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors">
+      <TableRow
+        className={`transition-colors ${
+          esPendiente
+            ? "bg-amber-50/20 dark:bg-amber-950/10 hover:bg-amber-50/40"
+            : "hover:bg-gray-50/60 dark:hover:bg-white/[0.02]"
+        }`}
+      >
         {/* Columna 1: Nombre y Cargo */}
         <TableCell className="py-4 pl-6">
           <div className="flex items-center gap-3 cursor-pointer" onClick={onAbrir}>
@@ -243,13 +294,26 @@ const FilaEquipo = observer(
               src={op.avatarUrl || ""}
               initials={obtenerIniciales(op.nombre)}
               size="medium"
+              status={esPendiente ? "busy" : op.estado === "activo" ? "online" : "none"}
               alt={op.nombre}
               className="ring-2 ring-gray-100 dark:ring-gray-800 shadow-sm flex-shrink-0"
             />
             <div className="flex flex-col min-w-0">
-              <span className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-                {op.nombre}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                  {op.nombre}
+                </span>
+                {esPendiente && (
+                  <Badge color="warning" size="xs" className="font-medium">
+                    Pendiente
+                  </Badge>
+                )}
+                {op.estado === "inactivo" && (
+                  <Badge color="light" size="xs" className="font-medium text-gray-500">
+                    Suspendido
+                  </Badge>
+                )}
+              </div>
               <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
                 {op.cargo || op.email}
               </span>
@@ -260,7 +324,11 @@ const FilaEquipo = observer(
         {/* Columna 2: Capacidades */}
         <TableCell className="py-4">
           <div className="flex flex-wrap items-center gap-1.5 cursor-pointer" onClick={onAbrir}>
-            {grupos.length > 0 ? (
+            {esPendiente ? (
+              <span className="text-xs italic text-amber-700 dark:text-amber-400">
+                Se habilitarán al aprobar la solicitud
+              </span>
+            ) : grupos.length > 0 ? (
               <>
                 {grupos.map((g) => (
                   <Badge
@@ -313,6 +381,17 @@ const FilaEquipo = observer(
         {/* Columna 4: Acciones */}
         <TableCell className="py-4 text-right pr-6">
           <div className="flex items-center justify-end gap-3 relative">
+            {/* Botón de acción directa si está pendiente */}
+            {esPendiente && (
+              <button
+                type="button"
+                onClick={() => operadoresStore.aprobar(op.id)}
+                className="px-3 py-1 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-colors cursor-pointer"
+              >
+                Aprobar
+              </button>
+            )}
+
             {/* Botón Ver perfil */}
             <button
               onClick={onAbrir}

@@ -48,7 +48,8 @@ interface PersonaForm {
 }
 
 export const EquipoPage = observer(() => {
-  const [tab, setTab] = useState<TabEquipo>("todos");
+  const [vista, setVista] = useState<"equipo" | "roles">("equipo");
+  const [tab, setTab] = useState<"todos" | "pendientes">("todos");
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<string>(FILTRO_ESTADO_TODAS);
   const [modalOpen, setModalOpen] = useState(false);
@@ -87,12 +88,8 @@ export const EquipoPage = observer(() => {
   };
 
   // ── Filtrado ──────────────────────────────────────────────────────────────
-  // Se calcula en cada render a propósito: `porModulo()` devuelve un array nuevo
-  // cada vez, así que un `useMemo` sobre él nunca acertaría la caché y solo
-  // añadiría ruido. La lista es pequeña (mock en memoria).
   const q = busqueda.trim().toLowerCase();
   const listaFiltrada = equipo.filter((op: Operador) => {
-    // La pestaña "pendientes" ya acota por estado; el filtro solo aplica en "todos".
     if (tab === "pendientes" && op.estado !== "pendiente") return false;
     if (tab === "todos" && filtroEstado !== FILTRO_ESTADO_TODAS && op.estado !== (filtroEstado as OperadorEstado)) {
       return false;
@@ -106,41 +103,58 @@ export const EquipoPage = observer(() => {
       <PageMeta title="Equipo · Pedidos" description="Personas, roles y capacidades del módulo de pedidos" />
 
       {/* Encabezado */}
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-gray-800 dark:text-white/90">Equipo</h1>
-            {pendientes > 0 && (
+            <h1 className="text-xl font-bold text-gray-800 dark:text-white/90">
+              {vista === "roles" ? "Roles y Permisos" : "Equipo"}
+            </h1>
+            {vista === "equipo" && pendientes > 0 && (
               <Badge color="warning" size="sm">
                 {pendientes} pendiente{pendientes === 1 ? "" : "s"}
               </Badge>
             )}
           </div>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Cada persona tiene un rol, y el rol define qué puede hacer. Haz clic en una persona para ver su perfil.
+            {vista === "roles"
+              ? "Configuración de los paquetes de capacidades para cada rol de usuario."
+              : "Cada persona tiene un rol, y el rol define qué puede hacer. Haz clic en una persona para ver su perfil."}
           </p>
         </div>
-        <Button size="sm" onClick={abrirCrear}>Añadir persona</Button>
+
+        <div className="flex items-center gap-3">
+          <Button
+            size="sm"
+            variant={vista === "roles" ? "primary" : "outline"}
+            onClick={() => setVista((v) => (v === "roles" ? "equipo" : "roles"))}
+          >
+            {vista === "roles" ? "← Volver a equipo" : "Gestionar roles"}
+          </Button>
+          {vista === "equipo" && (
+            <Button size="sm" onClick={abrirCrear}>
+              Añadir persona
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Pestañas */}
-      <div className="mb-5">
-        <Tab
-          variant="underline"
-          items={[
-            { key: "todos", label: "Todos", badge: equipo.length },
-            { key: "pendientes", label: "Pendientes", badge: pendientes },
-            { key: "roles", label: "Roles", badge: rolesStore.roles.length },
-          ]}
-          activeTab={tab}
-          onTabChange={(k) => setTab(k as TabEquipo)}
-        />
-      </div>
-
-      {tab === "roles" ? (
+      {vista === "roles" ? (
         <RolesTab />
       ) : (
         <>
+          {/* Pestañas de filtrado de personas */}
+          <div className="mb-5">
+            <Tab
+              variant="underline"
+              items={[
+                { key: "todos", label: "Todos", badge: equipo.length },
+                { key: "pendientes", label: "Pendientes", badge: pendientes },
+              ]}
+              activeTab={tab}
+              onTabChange={(k) => setTab(k as "todos" | "pendientes")}
+            />
+          </div>
+
           {/* Buscador + filtro de estado */}
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
@@ -152,8 +166,6 @@ export const EquipoPage = observer(() => {
                 className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:text-white/90"
               />
             </div>
-            {/* El filtro de estado no se muestra en "pendientes": la pestaña ya
-                acota a ese estado y un filtro encima confundiría. */}
             {tab === "todos" && (
               <div className="w-full sm:w-48">
                 <Select
