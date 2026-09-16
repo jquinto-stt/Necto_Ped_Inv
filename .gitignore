@@ -1,0 +1,13 @@
+node_modules/
+dist
+.sst
+.devlink/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+docs/
+assets-design/
+sst-env.d.ts
+Necto_Ped_Inv/
+.workbuddy-ai/
