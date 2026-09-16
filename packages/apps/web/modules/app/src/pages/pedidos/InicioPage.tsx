@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { observer } from "mobx-react-lite";
 import { PageMeta } from "@/shell/meta";
 import { Card } from "@/elements/ui/card";
+import { Badge } from "@/elements/ui/badge";
 import { Modal } from "@/elements/ui/modal";
 import { Button } from "@/elements/ui/button";
 import { DatePicker } from "@/elements/form/date-picker";
@@ -905,9 +906,9 @@ export const InicioPage = observer(() => {
                       <TableCell className="text-gray-500 dark:text-gray-400">{pedidosStore.modalidadLabel(p.modalidad)}</TableCell>
                       <TableCell className="text-gray-500 dark:text-gray-400">{pedidosStore.totalPedido(p) > 0 ? money(pedidosStore.totalPedido(p)) : "—"}</TableCell>
                       <TableCell>
-                        <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+                        <Badge color={pedidosStore.estadoBadgeColor(p.estado)} size="sm">
                           {pedidosStore.estadoLabel(p.estado)}
-                        </span>
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}
