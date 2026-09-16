@@ -334,14 +334,26 @@ export class OperadoresStore {
    */
   crear(
     modulo: Modulo,
-    data: { nombre: string; email: string; telefono: string; rolId?: string; profesionalIds?: string[]; colaIds?: string[] }
+    data: {
+      nombre: string;
+      email: string;
+      telefono: string;
+      rolId?: string;
+      estado?: OperadorEstado;
+      cargo?: string;
+      avatarUrl?: string;
+      profesionalIds?: string[];
+      colaIds?: string[];
+    }
   ) {
     this.operadores.push({
       id: `${modulo[0]}${Date.now()}`,
       nombre: data.nombre,
       email: data.email,
       telefono: data.telefono,
-      estado: "activo",
+      cargo: data.cargo,
+      avatarUrl: data.avatarUrl,
+      estado: data.estado ?? "activo",
       modulo,
       rolId: data.rolId ?? (modulo === "pedidos" ? "personalizado" : undefined),
       permisos: todasLasSecciones(modulo),

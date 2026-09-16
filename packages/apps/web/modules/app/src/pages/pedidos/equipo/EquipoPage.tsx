@@ -9,6 +9,7 @@ import { Input } from "@/elements/form/input";
 import { Label } from "@/elements/form/label";
 import { Select } from "@/elements/form/select";
 import { operadoresStore, rolesStore, type Operador, type OperadorEstado } from "@/stores";
+import { PlusIcon } from "@/icons";
 import { EquipoTabla } from "./EquipoTabla";
 import { RolesTab } from "./RolesTab";
 import {
@@ -39,11 +40,12 @@ import {
 //
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Formulario de alta de una persona. */
+/** Formulario de invitación de un miembro del equipo. */
 interface PersonaForm {
   nombre: string;
   email: string;
   telefono: string;
+  cargo: string;
   rolId: string;
 }
 
@@ -54,8 +56,14 @@ export const EquipoPage = observer(() => {
   const [filtroEstado, setFiltroEstado] = useState<string>(FILTRO_ESTADO_TODAS);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // ── Alta de persona ───────────────────────────────────────────────────────
-  const [form, setForm] = useState<PersonaForm>({ nombre: "", email: "", telefono: "", rolId: "" });
+  // ── Invitación de persona ──────────────────────────────────────────────────
+  const [form, setForm] = useState<PersonaForm>({
+    nombre: "",
+    email: "",
+    telefono: "",
+    cargo: "",
+    rolId: "",
+  });
   const [emailTocado, setEmailTocado] = useState(false);
 
   const equipo = operadoresStore.porModulo("pedidos");
@@ -68,7 +76,13 @@ export const EquipoPage = observer(() => {
   const rolesAsignables = rolesStore.roles.filter((r) => r.id !== "admin_tienda");
 
   const abrirCrear = () => {
-    setForm({ nombre: "", email: "", telefono: "", rolId: rolesAsignables[0]?.id ?? "" });
+    setForm({
+      nombre: "",
+      email: "",
+      telefono: "",
+      cargo: "",
+      rolId: rolesAsignables[0]?.id ?? "",
+    });
     setEmailTocado(false);
     setModalOpen(true);
   };
@@ -82,7 +96,9 @@ export const EquipoPage = observer(() => {
       nombre: form.nombre.trim(),
       email: form.email.trim(),
       telefono: form.telefono.trim(),
+      cargo: form.cargo.trim() || undefined,
       rolId: form.rolId,
+      estado: "pendiente",
     });
     setModalOpen(false);
   };
@@ -131,8 +147,12 @@ export const EquipoPage = observer(() => {
             {vista === "roles" ? "← Volver a equipo" : "Gestionar roles"}
           </Button>
           {vista === "equipo" && (
-            <Button size="sm" onClick={abrirCrear}>
-              Añadir persona
+            <Button
+              size="sm"
+              startIcon={<PlusIcon className="h-4 w-4" />}
+              onClick={abrirCrear}
+            >
+              Invitar miembro
             </Button>
           )}
         </div>
@@ -182,11 +202,11 @@ export const EquipoPage = observer(() => {
         </>
       )}
 
-      {/* Modal: añadir persona */}
+      {/* Modal: invitar miembro */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} className="max-w-md p-6">
-        <h2 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Añadir persona</h2>
+        <h2 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Invitar miembro</h2>
         <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
-          Quedará activa de inmediato y podrá entrar con las capacidades de su rol.
+          Se enviará una invitación a su correo electrónico. La persona aparecerá como pendiente hasta confirmar su registro.
         </p>
 
         <div className="space-y-4">
@@ -201,10 +221,19 @@ export const EquipoPage = observer(() => {
                 setForm((prev) => ({
                   ...prev,
                   nombre: valor,
-                  // Sugerimos el correo mientras el admin no lo haya escrito a mano.
                   email: emailTocado ? prev.email : emailSugerido(valor),
                 }));
               }}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="eq-cargo">Cargo o designación</Label>
+            <Input
+              id="eq-cargo"
+              value={form.cargo}
+              placeholder="Ej. Vendedora de Mostrador, Despacho"
+              onChange={(e) => set("cargo")(e.target.value)}
             />
           </div>
 
@@ -234,7 +263,7 @@ export const EquipoPage = observer(() => {
           </div>
 
           <div>
-            <Label htmlFor="eq-rol">Rol <span className="text-error-500">*</span></Label>
+            <Label htmlFor="eq-rol">Rol asignado <span className="text-error-500">*</span></Label>
             <Select
               options={rolesAsignables.map((r) => ({ value: r.id, label: r.nombre }))}
               defaultValue={form.rolId}
@@ -249,7 +278,7 @@ export const EquipoPage = observer(() => {
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <Button size="sm" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-          <Button size="sm" disabled={!datosOk} onClick={guardar}>Guardar</Button>
+          <Button size="sm" disabled={!datosOk} onClick={guardar}>Enviar invitación</Button>
         </div>
       </Modal>
     </>
