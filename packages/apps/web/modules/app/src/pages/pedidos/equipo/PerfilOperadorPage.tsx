@@ -206,12 +206,6 @@ const PerfilContent = observer(({ op }: { op: Operador }) => {
               </Button>
             </>
           )}
-          {op.estado === "activo" && (
-            <Button size="sm" variant="outline" onClick={() => operadoresStore.desactivar(op.id)}>Suspender</Button>
-          )}
-          {op.estado === "inactivo" && (
-            <Button size="sm" variant="outline" onClick={() => operadoresStore.activar(op.id)}>Activar</Button>
-          )}
         </div>
       </div>
 
@@ -289,7 +283,10 @@ const PerfilContent = observer(({ op }: { op: Operador }) => {
           </Card>
 
           <Card>
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Rol</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Rol y Acceso</h2>
+              <Badge color={estado.color} size="xs">{estado.label}</Badge>
+            </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               El rol es el paquete de capacidades que esta persona hereda. Cambiarlo reexpresa sus ajustes a
               mano contra el rol nuevo.
@@ -308,6 +305,41 @@ const PerfilContent = observer(({ op }: { op: Operador }) => {
               <p className="mt-2 text-xs text-warning-600 dark:text-warning-400">
                 Sin rol no tiene ninguna capacidad (fail-closed).
               </p>
+            )}
+
+            {/* Gestión del acceso: botón de Suspender / Reactivar */}
+            {op.estado !== "pendiente" && (
+              <div className="mt-5 flex items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+                <div>
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    {op.estado === "activo" ? "Acceso habilitado" : "Acceso suspendido"}
+                  </p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    {op.estado === "activo"
+                      ? "Puede entrar y operar según su rol."
+                      : "No puede entrar al sistema."}
+                  </p>
+                </div>
+                {op.estado === "activo" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-warning-700 border-warning-300 hover:bg-warning-50 hover:text-warning-800 dark:text-warning-400 dark:border-warning-800 dark:hover:bg-warning-950/30 cursor-pointer"
+                    onClick={() => operadoresStore.desactivar(op.id)}
+                  >
+                    Suspender
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-success-700 border-success-300 hover:bg-success-50 hover:text-success-800 dark:text-success-400 dark:border-success-800 dark:hover:bg-success-950/30 cursor-pointer"
+                    onClick={() => operadoresStore.activar(op.id)}
+                  >
+                    Reactivar
+                  </Button>
+                )}
+              </div>
             )}
           </Card>
         </div>
