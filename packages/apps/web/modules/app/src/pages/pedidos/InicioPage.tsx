@@ -4,13 +4,14 @@ import { useNavigate } from "react-router";
 import { observer } from "mobx-react-lite";
 import { PageMeta } from "@/shell/meta";
 import { Card } from "@/elements/ui/card";
+import { Badge } from "@/elements/ui/badge";
 import { Modal } from "@/elements/ui/modal";
 import { Button } from "@/elements/ui/button";
 import { DatePicker } from "@/elements/form/date-picker";
 import { LineChart } from "@/elements/ui/line-chart";
 import { PieChart } from "@/elements/ui/pie-chart";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/elements/ui/table";
-import { pedidosStore, sessionStore } from "@/stores";
+import { pedidosStore, sessionStore, puedeGuardarConfig, puedeEscribirCliente, motivoSinPermiso } from "@/stores";
 import type { Pedido } from "@/stores/pedidos.store";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -116,24 +117,40 @@ if (import.meta.hot) {
 /**
  * Botón de altavoz para silenciar / reactivar la campanita de "requieren
  * atención". Refleja y persiste el estado en la config del módulo.
+ *
+ * **Autorización (Fase 2).** Escribe en la configuración del módulo
+ * (`updateConfig`), así que exige `settings.manage`. Se muestra deshabilitado
+ * en vez de oculto —es un control de cabecera, y ocultarlo haría pensar que la
+ * alerta no se puede silenciar nunca— con el motivo en el `title`.
  */
 const BotonSilenciar = observer(() => {
   const sonidoActivo = pedidosStore.config.alertaAtencion.activo;
+  const puedeSilenciar = puedeGuardarConfig();
   return (
     <button
       type="button"
+      disabled={!puedeSilenciar}
       onClick={(e) => {
         e.stopPropagation();
+        if (!puedeSilenciar) return;
         pedidosStore.updateConfig({
           alertaAtencion: { ...pedidosStore.config.alertaAtencion, activo: !sonidoActivo },
         });
       }}
-      title={sonidoActivo ? "Silenciar alerta" : "Activar alerta"}
+      title={
+        !puedeSilenciar
+          ? motivoSinPermiso("settings.manage")
+          : sonidoActivo
+            ? "Silenciar alerta"
+            : "Activar alerta"
+      }
       aria-pressed={!sonidoActivo}
       className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-        sonidoActivo
-          ? "text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800"
-          : "text-error-500 hover:bg-error-50 dark:hover:bg-error-500/10"
+        !puedeSilenciar
+          ? "cursor-not-allowed text-gray-300 dark:text-gray-600"
+          : sonidoActivo
+            ? "text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800"
+            : "text-error-500 hover:bg-error-50 dark:hover:bg-error-500/10"
       }`}
     >
       {sonidoActivo ? (
@@ -416,7 +433,15 @@ const ClientesModal = observer(({ onClose }: { onClose: () => void }) => {
         {lista.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-400">Sin clientes en este filtro.</p>
         ) : (
-          lista.map((p) => <ClienteRow key={p.id} p={p} onClick={() => abrirWhatsApp(p.telefono)} showWhatsApp />)
+          lista.map((p) => (
+            <ClienteRow
+              key={p.id}
+              p={p}
+              onClick={() => abrirWhatsApp(p.telefono)}
+              // Escribir al cliente es una acción de canal: `channels.read`.
+              showWhatsApp={puedeEscribirCliente()}
+            />
+          ))
         )}
       </div>
     </Modal>
@@ -881,9 +906,9 @@ export const InicioPage = observer(() => {
                       <TableCell className="text-gray-500 dark:text-gray-400">{pedidosStore.modalidadLabel(p.modalidad)}</TableCell>
                       <TableCell className="text-gray-500 dark:text-gray-400">{pedidosStore.totalPedido(p) > 0 ? money(pedidosStore.totalPedido(p)) : "—"}</TableCell>
                       <TableCell>
-                        <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+                        <Badge color={pedidosStore.estadoBadgeColor(p.estado)} size="sm">
                           {pedidosStore.estadoLabel(p.estado)}
-                        </span>
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}

@@ -1,47 +1,143 @@
 import { makeAutoObservable } from "mobx";
-import { operadoresStore, SECCIONES } from "@/stores/operadores.store";
+import { operadoresStore, SECCIONES, type Seccion } from "@/stores/operadores.store";
+import { rolesStore, ROL_ADMIN, type Capacidad } from "@/stores/roles.store";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTRATO DE ARQUITECTURA
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Este archivo implementa el contrato de acceso de Necto:
+//   outputs/contrato-arquitectura-acceso-necto.md
+//
+// Regla de autoridad: si este código contradice el contrato, gana el contrato.
+//
+// Los conceptos que viven aquí, y los que NO:
+//
+//   Sesión         (§1.1)  → quién opera y en qué módulos. NO contiene permisos.
+//   Tipo de sesión (§1.2)  → vía de entrada. SOLO enrutamiento, NUNCA autorización.
+//   AccessContext  (§1.8)  → snapshot derivado. SOLO autorización.
+//   DataScope      (§1.6)  → qué datos se ven. Capa aparte de la autorización.
+//
+//   Rol (§1.3) y Capacidad (§1.4) viven en `roles.store.ts`.
+//   Sección (§1.5) vive en `SECCIONES` (operadores.store.ts).
+//   Simulación (§1.7) es una herramienta de admin, no autenticación.
+//
+// LÍMITE DEL MOCK: no hay backend ni Cognito. "Administrador" se auto-declara en
+// `/seleccionar` sin credenciales, así que los guards de este archivo dan
+// **coherencia y UX**, no seguridad real. Eso solo llega con auth de verdad,
+// que está fuera del contrato (§9).
+//
+// ═══════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Los módulos del producto. */
-export type Modulo = "turnos" | "agendamiento" | "pedidos";
+export type Modulo = "pedidos";
 
-/** Rol del usuario dentro del negocio (mock — sin Cognito por ahora). */
-export type Rol = "administrador" | "operador";
+/**
+ * Tipo de sesión — la **vía de entrada** elegida en `/seleccionar`.
+ *
+ * Contrato §1.2: **no es autorización.** Solo decide a qué onboarding ir tras
+ * `/seleccionar` y sirve para copia de UI. Ningún guard ni componente de
+ * negocio puede leerlo para decidir acceso (invariante C1).
+ *
+ * Se llamaba `Rol`, y se renombró precisamente para que nadie lo confunda con
+ * el `Rol` de dominio (`roles.store.ts`).
+ */
+export type TipoSesion = "administrador" | "operador";
+
+/**
+ * Scope de datos — qué **registros** puede ver la sesión (contrato §1.6).
+ *
+ * Responde "¿qué datos puede ver?", no "¿puede hacer esto?". Es una capa
+ * separada de la autorización y **no** vive en `AccessContext` (invariante C6).
+ *
+ * Se hace explícito el caso "ve todo" en vez de usar `null`, que era el patrón
+ * ambiguo anterior (`null` = todas / `[]` = ninguna).
+ */
+export type DataScope =
+  | { tipo: "sin_restriccion" }
+  | { tipo: "restringido"; ids: string[] };
+
+/**
+ * AccessContext — snapshot derivado y de solo lectura que responde
+ * "¿qué puede hacer esta sesión?" (contrato §1.8).
+ *
+ * Es **exclusivamente autorización**. Deliberadamente NO contiene:
+ *   - `nombre`        → es presentación (leer `operadoresStore` por `operadorId`)
+ *   - `esAdmin`       → el admin es un rol normal (invariante C9)
+ *   - `secciones`     → se deriva de las capacidades, no se almacena
+ *   - `colaIds` / `profesionalIds` → son scope de datos, no autorización (C6)
+ */
+export interface AccessContext {
+  /** ¿Hay una sesión utilizable? Sin esto no se entra al shell. */
+  autenticado: boolean;
+  /** Cómo se llegó a la sesión. SOLO enrutamiento de flujo. NUNCA autorización. */
+  tipoSesion: TipoSesion | null;
+  /** Id del operador cuando se está simulando; `null` en sesión directa. */
+  operadorId: string | null;
+  /** Rol efectivo del que se derivan las capacidades. */
+  rolId: string | null;
+  /** Lista efectiva de capacidades. NUNCA `null`. Sin configurar = `[]`. */
+  capacidades: Capacidad[];
+  /** Módulos habilitados para esta sesión. */
+  modulos: Modulo[];
+}
+
+/** Snapshot del estado previo a una simulación, para poder restaurarlo. */
+interface PreSimulacion {
+  modulos: Modulo[];
+  tipoSesion: TipoSesion | null;
+}
+
+interface SessionSnapshot {
+  modulos: Modulo[];
+  tipoSesion: TipoSesion | null;
+  operadorSimuladoId: string | null;
+  preSimulacion: PreSimulacion | null;
+}
+
+/**
+ * Forma persistida por versiones anteriores de la app, que guardaban el tipo de
+ * sesión bajo la clave `rol`. Se acepta al leer para no cerrar la sesión de
+ * golpe al actualizar el código.
+ */
+interface LegacySnapshot extends Partial<SessionSnapshot> {
+  rol?: TipoSesion | null;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PERSISTENCIA (mock, localStorage)
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // La sesión se guarda en localStorage para que sobreviva a recargas de página.
-// Sin esto, al recargar se pierden módulos/rol y el sidebar cae al fallback
-// (mostraba ambos módulos y ocultaba Operadores).
+// Sin esto, al recargar se pierden módulos/tipo de sesión y el sidebar cae al
+// fallback (mostraba todos los módulos y ocultaba Operadores).
+//
+// OJO: la sesión NO guarda permisos ni capacidades. Esos se derivan en cada
+// render a partir del rol. Ver contrato §1.1.
 
 const SESSION_KEY = "necto.session";
-
-interface SessionSnapshot {
-  modulos: Modulo[];
-  rol: Rol | null;
-  operadorSimuladoId: string | null;
-}
 
 function loadSession(): SessionSnapshot {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if (raw) {
-      const s = JSON.parse(raw) as Partial<SessionSnapshot>;
+      const s = JSON.parse(raw) as LegacySnapshot;
       return {
         modulos: Array.isArray(s.modulos) ? s.modulos : [],
-        rol: s.rol ?? null,
+        // `s.rol` es la clave antigua: compatibilidad de lectura.
+        tipoSesion: s.tipoSesion ?? s.rol ?? null,
         operadorSimuladoId: s.operadorSimuladoId ?? null,
+        preSimulacion: s.preSimulacion ?? null,
       };
     }
   } catch {
     // Sin localStorage o JSON inválido: sesión vacía.
   }
-  return { modulos: [], rol: null, operadorSimuladoId: null };
+  return { modulos: [], tipoSesion: null, operadorSimuladoId: null, preSimulacion: null };
 }
 
 function persistSession(s: SessionSnapshot): void {
@@ -58,65 +154,84 @@ function persistSession(s: SessionSnapshot): void {
 
 /**
  * SessionStore — fuente de verdad de la "configuración previa" del usuario:
- * qué módulos eligió trabajar (turnos y/o agendamiento) y con qué rol
- * (administrador | operador).
+ * qué módulos eligió trabajar y con qué tipo de sesión.
  *
  * Es 100% mock (no hay backend ni Cognito todavía). La vista de selección
  * (`/seleccionar`) escribe aquí, y el resto de la app lee de aquí para adaptar
- * lo que muestra según el rol.
+ * lo que muestra.
  *
- * El usuario puede elegir uno o los dos módulos. Cuando exista auth real, `rol`
- * debería derivarse de los grupos de Cognito.
+ * **Qué NO hace este store:** no guarda permisos ni capacidades. La autorización
+ * se deriva en `accessContext` a partir del rol asignado (contrato §1.8).
  */
 export class SessionStore {
   /** Módulos seleccionados por el usuario (puede ser uno o los dos). */
   modulos: Modulo[] = [];
-  rol: Rol | null = null;
 
   /**
-   * Id del operador que se está simulando (mock). Cuando no es null, la app
-   * corre "como" ese operador: el sidebar y las rutas se limitan a sus
-   * permisos. La simulación se activa desde /seleccionar (rol operador →
-   * "Simular").
+   * Vía de entrada elegida en `/seleccionar`.
+   *
+   * Solo enrutamiento de flujo. NUNCA leer esto para decidir acceso (C1).
+   */
+  tipoSesion: TipoSesion | null = null;
+
+  /**
+   * Id del operador que se está simulando ("Viendo como").
+   *
+   * Contrato §1.7: la simulación es una **herramienta administrativa**, no
+   * autenticación. Cuando no es null, la app corre "como" ese operador.
    */
   operadorSimuladoId: string | null = null;
+
+  /**
+   * Estado previo a la simulación, para poder restaurarlo al salir.
+   *
+   * Sin esto, `simular()` pisaba `tipoSesion` y `modulos` sin vuelta atrás y
+   * `salirSimulacion()` tenía que resetear todo (bug del análisis anterior).
+   */
+  preSimulacion: PreSimulacion | null = null;
 
   constructor() {
     // Restaura la sesión guardada (sobrevive a recargas de página).
     const s = loadSession();
     this.modulos = s.modulos;
-    this.rol = s.rol;
+    this.tipoSesion = s.tipoSesion;
     this.operadorSimuladoId = s.operadorSimuladoId;
+    this.preSimulacion = s.preSimulacion;
     makeAutoObservable(this);
+
+    // Tras hidratar, valida que el operador simulado siga existiendo.
+    //
+    // `operadoresStore` es memoria pura y vuelve al SEED en cada recarga,
+    // mientras que `operadorSimuladoId` SÍ se persiste. Sin esta reconciliación,
+    // un id que ya no existe dejaba la simulación activa con permisos vacíos
+    // (sidebar en blanco). Ver invariante de vida de la simulación.
+    this.reconciliar();
   }
 
   /** Guarda el estado actual en localStorage. */
   private persist() {
     persistSession({
       modulos: this.modulos,
-      rol: this.rol,
+      tipoSesion: this.tipoSesion,
       operadorSimuladoId: this.operadorSimuladoId,
+      preSimulacion: this.preSimulacion,
     });
   }
 
-  // ── Getters de rol ──────────────────────────────────────────────────────
+  // ── Estado del flujo ────────────────────────────────────────────────────
 
-  get isAdmin() {
-    return this.rol === "administrador";
+  /**
+   * true cuando hay una sesión utilizable. Es la puerta que usa `RequireSession`.
+   *
+   * Contrato §2: sin configurar (`modulos` vacío o sin rol resoluble) es
+   * `false`. Esto corrige el bug H2 del análisis: antes una sesión vacía se
+   * comportaba como administrador porque `permisosActuales` devolvía `null`.
+   */
+  get isReady() {
+    return this.accessContext.autenticado;
   }
 
-  get isOperador() {
-    return this.rol === "operador";
-  }
-
-  /** Etiqueta legible del rol actual. */
-  get rolLabel() {
-    if (this.rol === "administrador") return "Administrador";
-    if (this.rol === "operador") return "Operador";
-    return "";
-  }
-
-  // ── Getters de módulos ──────────────────────────────────────────────────
+  // ── Módulos ─────────────────────────────────────────────────────────────
 
   /** true si el módulo dado está seleccionado. */
   hasModulo(modulo: Modulo) {
@@ -125,129 +240,186 @@ export class SessionStore {
 
   /** Etiqueta legible del conjunto de módulos seleccionados. */
   get modulosLabel() {
-    const label: Record<Modulo, string> = {
-      turnos: "Turnos",
-      agendamiento: "Agendamiento",
-      pedidos: "Pedidos",
-    };
-    return this.modulos.map((m) => label[m]).join(" + ");
+    return "Pedidos";
   }
 
   /**
    * Módulo "principal" con el que arranca la app tras la selección.
-   * Regla acordada: si el usuario eligió varios, la prioridad de entrada es
-   * Turnos → Agendamiento → Pedidos.
    */
   get moduloPrincipal(): Modulo | null {
-    if (this.modulos.includes("turnos")) return "turnos";
-    if (this.modulos.includes("agendamiento")) return "agendamiento";
     if (this.modulos.includes("pedidos")) return "pedidos";
     return null;
   }
 
   /**
+   * Módulo de la sesión actual: el del operador simulado si lo hay, o el
+   * principal.
+   */
+  get moduloActual(): Modulo | null {
+    return this.operadorSimulado?.modulo ?? this.moduloPrincipal;
+  }
+
+  /**
    * Ruta de entrada tras iniciar sesión / entrar al módulo.
-   * Es la sección "Inicio" del módulo principal (Turnos → /dashboard,
-   * Pedidos → /pedidos/inicio, etc.), tanto para admin como para operador.
    */
   get moduloEntryPath() {
     const modulo = this.moduloPrincipal;
     if (modulo === null) return "/seleccionar";
-    const inicio = SECCIONES[modulo].find((s) => s.id === "inicio");
-    return inicio?.path ?? "/dashboard";
+    const inicio = SECCIONES[modulo]?.find((s) => s.id === "inicio");
+    return inicio?.path ?? "/pedidos/inicio";
   }
 
-  // ── Estado del flujo ────────────────────────────────────────────────────
+  // ── Simulación de operador ("Viendo como") ──────────────────────────────
 
-  /** true cuando ya se eligió al menos un módulo y un rol. */
-  get isReady() {
-    return this.modulos.length > 0 && this.rol !== null;
-  }
-
-  // ── Simulación de operador ────────────────────────────────────────────────
-
-  /** true si la app está corriendo en modo "simular operador". */
+  /** true si la app está corriendo en modo "viendo como". */
   get isSimulando() {
     return this.operadorSimuladoId !== null;
   }
 
-  /** El operador que se está simulando (o null). */
+  /**
+   * El operador que se está simulando (o null).
+   *
+   * Es la fuente del `nombre` para el chip y el banner: el `AccessContext` no
+   * lleva datos de presentación (contrato §1.8).
+   */
   get operadorSimulado() {
-    if (!this.operadorSimuladoId) return null;
-    return operadoresStore.operadores.find((o) => o.id === this.operadorSimuladoId) ?? null;
+    return operadoresStore.porId(this.operadorSimuladoId) ?? null;
   }
 
+  // ── AccessContext (autorización) ────────────────────────────────────────
+
   /**
-   * Secciones (ids) que el usuario actual puede ver.
-   * - Simulando operador → sus permisos.
-   * - Cualquier otro caso (admin) → null = sin restricción (ve todo).
+   * Snapshot de autorización de la sesión actual.
+   *
+   * Resolución (contrato §2):
+   *
+   * | Estado                        | autenticado | rolId         | capacidades |
+   * |-------------------------------|-------------|---------------|-------------|
+   * | Sin configurar                | false       | null          | []          |
+   * | Sesión directa de admin       | true        | admin_tienda  | las 16      |
+   * | Simulando operador X          | true        | X.rolId       | efectivas X |
+   * | Sesión directa de operador    | false       | null          | []          |
    */
-  get permisosActuales(): string[] | null {
-    if (this.isSimulando) return this.operadorSimulado?.permisos ?? [];
-    return null;
-  }
+  get accessContext(): AccessContext {
+    const op = this.operadorSimulado;
 
-  /** ¿El usuario actual puede ver la sección dada? Admin siempre true. */
-  puedeVer(seccionId: string) {
-    const permisos = this.permisosActuales;
-    if (permisos === null) return true; // admin / sin simulación
-    return permisos.includes(seccionId);
+    // 1. Simulando un operador existente: sus capacidades efectivas.
+    if (op) {
+      return {
+        autenticado: true,
+        tipoSesion: "operador",
+        operadorId: op.id,
+        rolId: op.rolId ?? null,
+        capacidades: rolesStore.capacidadesEfectivas(op),
+        modulos: [op.modulo],
+      };
+    }
+
+    // 2. Sesión directa: solo el administrador resuelve a un rol.
+    //
+    // El admin NO tiene rama especial (contrato §6): se le asigna el rol
+    // `admin_tienda` y a partir de ahí todo pasa por `hasPermission()`.
+    const rolId = this.tipoSesion === "administrador" ? ROL_ADMIN : null;
+
+    return {
+      autenticado: this.modulos.length > 0 && rolId !== null,
+      tipoSesion: this.tipoSesion,
+      operadorId: null,
+      rolId,
+      capacidades: rolesStore.capacidadesDe(rolId),
+      modulos: this.modulos,
+    };
   }
 
   /**
-   * Ids de colas visibles para el usuario actual (Turnos):
-   * - Simulando operador → sus colas asignadas.
-   * - Admin / sin simulación → null = sin restricción (ve todas).
+   * ¿La sesión actual tiene la capacidad dada?
+   *
+   * Es la API canónica de autorización. Toda decisión de "¿puede hacer esto?"
+   * pasa por aquí (contrato §2).
    */
-  get colasVisiblesIds(): string[] | null {
-    if (this.isSimulando) return this.operadorSimulado?.colaIds ?? [];
-    return null;
-  }
-
-  /** ¿Puede el usuario actual ver la cola dada? Admin siempre true. */
-  puedeVerCola(colaId: string) {
-    const ids = this.colasVisiblesIds;
-    if (ids === null) return true;
-    return ids.includes(colaId);
+  hasPermission(capacidad: Capacidad): boolean {
+    return this.accessContext.capacidades.includes(capacidad);
   }
 
   /**
-   * Ids de profesionales visibles para el usuario actual (Agendamiento):
-   * - Simulando operador → sus profesionales asignados.
-   * - Admin / sin simulación → null = sin restricción (ve todos).
+   * Puente legado: ¿la sesión opera sin restricción?
+   *
+   * @deprecated Solo para `turnos` y `agendamiento`, que están congelados con el
+   * modelo de secciones (contrato §5). **En código nuevo usar `hasPermission()`.**
+   *
+   * Lee `rolId` —la fuente de verdad del contrato— en vez de un flag `esAdmin`
+   * suelto, para no reintroducir la semántica especial que el contrato elimina
+   * (invariante C9). Se retira cuando esos módulos migren a capacidades.
    */
-  get profesionalesVisiblesIds(): string[] | null {
-    if (this.isSimulando) return this.operadorSimulado?.profesionalIds ?? [];
-    return null;
+  get accesoTotal(): boolean {
+    return this.accessContext.rolId === ROL_ADMIN;
   }
 
-  /** ¿Puede el usuario actual ver al profesional dado? Admin siempre true. */
-  puedeVerProfesional(profesionalId: string) {
-    const ids = this.profesionalesVisiblesIds;
-    if (ids === null) return true;
-    return ids.includes(profesionalId);
-  }
+  // ── Secciones (navegación) ──────────────────────────────────────────────
 
   /**
-   * Ruta "inicio" a la que volver según el usuario actual:
-   * - Simulando operador → la primera sección que SÍ tiene permitida (para no
-   *   caer en una ruta bloqueada). Si no tiene ninguna, su módulo de entrada.
+   * ¿Puede la sesión actual entrar a la sección dada de un módulo?
+   *
+   * Es la API canónica de navegación, y recibe el módulo porque los ids de
+   * sección **no son únicos** entre módulos (`inicio` y `crear` se repiten).
+   *
+   * - `pedidos` → capacidad declarada por la sección (`Seccion.capacidad`).
+   * - `turnos` / `agendamiento` → lista blanca de `op.permisos` (legado).
+   *
+   * Invariante C5: entrar a una sección NO implica poder operarla. Las acciones
+   * de dentro se comprueban aparte con `hasPermission()`.
+   */
+  puedeVerSeccion(modulo: Modulo, seccionId: string): boolean {
+    const seccion = SECCIONES.pedidos.find((s) => s.id === seccionId);
+    return seccion?.capacidad ? this.hasPermission(seccion.capacidad) : false;
+  }
+
+  /** Adaptador de compatibilidad con la firma antigua. */
+  puedeVer(seccionId: string): boolean {
+    const modulo = this.moduloActual;
+    if (!modulo) return false;
+    return this.puedeVerSeccion(modulo, seccionId);
+  }
+
+  // ── Ruta de inicio ──────────────────────────────────────────────────────
+
+  /**
+   * Ruta "inicio" a la que volver según la sesión actual:
+   * - Simulando operador → la primera sección que SÍ puede ver (para no caer en
+   *   una ruta bloqueada). Si no tiene ninguna, su módulo de entrada.
    * - Admin / sin simulación → el módulo de entrada normal.
    */
   get homePathActual() {
     const op = this.operadorSimulado;
     if (op) {
       const secciones = SECCIONES[op.modulo];
-      // Preferimos "Inicio" del módulo si lo tiene permitido; si no, su primera
+      const puedeEntrar = (s: Seccion) => this.puedeVerSeccion(op.modulo, s.id);
+
+      // Preferimos "Inicio" del módulo si puede entrar; si no, su primera
       // sección permitida (para no caer en una ruta bloqueada).
-      if (op.permisos.includes("inicio")) {
-        const inicio = secciones.find((s) => s.id === "inicio");
-        if (inicio) return inicio.path;
-      }
-      const primera = secciones.find((s) => op.permisos.includes(s.id));
+      const inicio = secciones.find((s) => s.id === "inicio");
+      if (inicio && puedeEntrar(inicio)) return inicio.path;
+
+      const primera = secciones.find(puedeEntrar);
       if (primera) return primera.path;
     }
     return this.moduloEntryPath;
+  }
+
+  // ── Reconciliación ──────────────────────────────────────────────────────
+
+  /**
+   * Reconcilia la sesión con el estado real de los operadores.
+   *
+   * Si el operador simulado ya no existe o dejó de estar activo, sale de la
+   * simulación (y restaura la sesión previa). Evita el bug de "permisos
+   * degradados a []" cuando el admin elimina o desactiva al operador que está
+   * simulando, o cuando el id persistido ya no existe tras una recarga.
+   */
+  reconciliar() {
+    if (!this.operadorSimuladoId) return;
+    const op = operadoresStore.porId(this.operadorSimuladoId);
+    if (!op || op.estado !== "activo") this.salirSimulacion();
   }
 
   // ── Mutadores ───────────────────────────────────────────────────────────
@@ -268,43 +440,80 @@ export class SessionStore {
     this.persist();
   }
 
-  setRol(rol: Rol) {
-    this.rol = rol;
-    this.persist();
-  }
-
   /** Aplica la selección completa de una sola vez. */
-  configurar(modulos: Modulo[], rol: Rol) {
+  configurar(modulos: Modulo[], tipoSesion: TipoSesion) {
     this.modulos = modulos;
-    this.rol = rol;
+    this.tipoSesion = tipoSesion;
     this.persist();
   }
 
   /**
-   * Entra en modo simulación como el operador dado (mock). Ajusta módulo y rol
-   * a los del operador para que la app se comporte como si él estuviera dentro.
+   * Entra en modo simulación ("Viendo como") sobre el operador dado.
+   *
+   * Guarda un snapshot del estado previo la primera vez, para que
+   * `salirSimulacion()` pueda **restaurar** en vez de resetear.
+   *
+   * Invariantes C7 y C8: solo acepta operadores `activo`, y nunca amplía
+   * capacidades (las del operador son las que son).
    */
   simular(operadorId: string) {
-    const op = operadoresStore.operadores.find((o) => o.id === operadorId);
-    if (!op) return;
+    const op = operadoresStore.porId(operadorId);
+    if (!op || op.estado !== "activo") return;
+
+    if (!this.isSimulando) {
+      this.preSimulacion = { modulos: [...this.modulos], tipoSesion: this.tipoSesion };
+    }
+
     this.operadorSimuladoId = operadorId;
-    this.rol = "operador";
+    this.tipoSesion = "operador";
     this.modulos = [op.modulo];
     this.persist();
   }
 
-  /** Sale del modo simulación y limpia todo (vuelve al inicio del flujo). */
+  /**
+   * Sale de la simulación y **restaura** la sesión previa.
+   *
+   * Antes esto delegaba en `reset()`, que borraba módulos y rol: el round-trip
+   * no era reversible y devolvía al login en vez de a la vista de admin.
+   */
   salirSimulacion() {
+    const snapshot = this.preSimulacion;
+    this.operadorSimuladoId = null;
+    this.preSimulacion = null;
+
+    if (snapshot) {
+      this.modulos = [...snapshot.modulos];
+      this.tipoSesion = snapshot.tipoSesion;
+      this.persist();
+      return;
+    }
+
+    // Sin snapshot (p. ej. sesión antigua sin `preSimulacion`): no hay a dónde
+    // volver, así que se limpia del todo.
     this.reset();
   }
 
   /** Limpia la sesión (ej. al cerrar sesión). */
   reset() {
     this.modulos = [];
-    this.rol = null;
+    this.tipoSesion = null;
     this.operadorSimuladoId = null;
+    this.preSimulacion = null;
     this.persist();
   }
 }
 
 export const sessionStore = new SessionStore();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RECONCILIACIÓN ENTRE STORES
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// La sesión se reconcilia cuando cambia la lista de operadores: si el admin
+// desactiva o elimina al operador que está simulando, hay que salir de la
+// simulación en vez de quedarse con permisos vacíos.
+//
+// No hay import circular: `operadores.store` no conoce a `session.store`, solo
+// expone el registro del listener.
+
+operadoresStore.onChange(() => sessionStore.reconciliar());

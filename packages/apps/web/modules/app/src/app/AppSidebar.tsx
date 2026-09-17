@@ -11,13 +11,10 @@ import {
   GridIcon,
   TaskIcon,
   ListIcon,
-  ShootingStarIcon,
   PlugInIcon,
   InfoIcon,
   ArrowRightIcon,
-  CalenderIcon,
   PlusIcon,
-  PieChartIcon,
   GroupIcon,
 } from "@/icons";
 
@@ -26,7 +23,7 @@ import {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const Logo = () => (
-  <Link to="/dashboard" className="flex items-center">
+  <Link to="/pedidos/inicio" className="flex items-center">
     <img
       src="/images/logo/necto-full.svg"
       alt="NECTO"
@@ -37,7 +34,7 @@ const Logo = () => (
 
 const LogoCollapsed = () => (
   <Link
-    to="/dashboard"
+    to="/pedidos/inicio"
     className="flex items-center justify-center h-10 w-10 rounded-xl border-2 border-brand-500"
   >
     <img
@@ -57,9 +54,6 @@ const SidebarFooter = observer(() => {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    // TODO: integrate with Cognito sign-out
-    // Cerrar sesión borra todo el estado (módulos, rol, simulación) y su
-    // persistencia en localStorage vía reset().
     sessionStore.reset();
     navigate("/login");
   };
@@ -76,7 +70,7 @@ const SidebarFooter = observer(() => {
             <span className="menu-item-icon-size menu-item-icon-inactive">
               <PlugInIcon />
             </span>
-            {showExpanded && <span className="menu-item-text">Configuracion</span>}
+            {showExpanded && <span className="menu-item-text">Configuración</span>}
           </Link>
         </li>
         <li>
@@ -97,17 +91,13 @@ const SidebarFooter = observer(() => {
             <span className="menu-item-icon-size text-error-500">
               <ArrowRightIcon />
             </span>
-            {showExpanded && <span className="menu-item-text">Cerrar sesion</span>}
+            {showExpanded && <span className="menu-item-text">Cerrar sesión</span>}
           </button>
         </li>
       </ul>
     </div>
   );
 });
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SIDEBAR CONTENT — Sistema de Turnos
-// ═══════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SIMULATION BANNER — indicador de "modo simulación" con salida
@@ -122,9 +112,8 @@ const SimulacionBanner = observer(() => {
   const nombre = sessionStore.operadorSimulado?.nombre ?? "Operador";
 
   const salir = () => {
-    // "Volver al principio de todo": limpia la simulación y regresa al login.
     sessionStore.salirSimulacion();
-    navigate("/login");
+    navigate(sessionStore.moduloEntryPath);
   };
 
   return (
@@ -132,22 +121,22 @@ const SimulacionBanner = observer(() => {
       {showExpanded ? (
         <>
           <p className="text-xs font-semibold uppercase tracking-wider text-warning-600 dark:text-orange-400">
-            Modo simulación
+            Viendo como
           </p>
           <p className="mt-1 truncate text-sm font-medium text-gray-800 dark:text-white/90">{nombre}</p>
           <button
             onClick={salir}
             className="mt-2 text-xs font-medium text-warning-600 underline hover:text-warning-700 dark:text-orange-400"
           >
-            Salir de simulación
+            Salir de vista
           </button>
         </>
       ) : (
         <button
           onClick={salir}
-          aria-label="Salir de simulación"
+          aria-label="Salir de vista"
           className="flex w-full items-center justify-center text-warning-600 dark:text-orange-400"
-          title="Modo simulación — salir"
+          title="Viendo como — salir"
         >
           <ArrowRightIcon />
         </button>
@@ -157,80 +146,35 @@ const SimulacionBanner = observer(() => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SIDEBAR CONTENT — Sistema de Turnos
+// SIDEBAR CONTENT — Módulo de Pedidos
 // ═══════════════════════════════════════════════════════════════════════════
 
 const SidebarContent = observer(() => {
   const { pathname } = useLocation();
   const isActive = (path: string) => pathname === path;
 
-  // El menú se adapta a los módulos que el usuario eligió en /seleccionar.
-  // Si aún no hay selección (p. ej. entró por una URL directa), mostramos
-  // ambas secciones para no dejar el sidebar vacío.
-  const sinSeleccion = sessionStore.modulos.length === 0;
-  const verTurnos = sinSeleccion || sessionStore.hasModulo("turnos");
-  const verAgendamiento = sinSeleccion || sessionStore.hasModulo("agendamiento");
-  const verPedidos = sinSeleccion || sessionStore.hasModulo("pedidos");
-
-  // En modo simulación, cada sección solo se muestra si el operador la tiene
-  // permitida. Fuera de simulación (admin), puedeVer() siempre devuelve true.
-  const puede = (seccionId: string) => sessionStore.puedeVer(seccionId);
+  const puedePedidos = (seccionId: string) => sessionStore.puedeVerSeccion("pedidos", seccionId);
+  const puedeGestionarEquipo = sessionStore.hasPermission("team.manage");
+  const esRutaConHijas = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
 
   return (
     <nav className="flex flex-col flex-1">
       <SimulacionBanner />
 
       <div className="flex flex-col gap-6">
-        {/* TURNOS */}
-        {verTurnos && (
-          <div>
-            <MenuSectionHeader title="Turnos" />
-            <ul className="flex flex-col gap-1">
-              {puede("inicio") && <MenuItem icon={<GridIcon />} name="Inicio" path="/dashboard" isActive={isActive} />}
-              {puede("turnos") && <MenuItem icon={<TaskIcon />} name="Mis Turnos" path="/turnos" isActive={isActive} />}
-              {puede("recepcion") && <MenuItem icon={<PlusIcon />} name="Crear turno" path="/recepcion" isActive={isActive} />}
-              {puede("colas") && <MenuItem icon={<ListIcon />} name="Filas" path="/colas" isActive={isActive} />}
-              {puede("encuestas") && <MenuItem icon={<ShootingStarIcon />} name="Encuestas" path="/encuestas" isActive={isActive} />}
-              {sessionStore.isAdmin && (
-                <MenuItem icon={<GroupIcon />} name="Operadores" path="/turnos/operadores" isActive={isActive} />
-              )}
-            </ul>
-          </div>
-        )}
-
-        {/* AGENDAMIENTO */}
-        {verAgendamiento && (
-          <div>
-            <MenuSectionHeader title="Agendamiento" />
-            <ul className="flex flex-col gap-1">
-              {puede("profesionales") && <MenuItem icon={<GroupIcon />} name="Profesionales" path="/agendamiento/profesionales" isActive={isActive} />}
-              {puede("agenda") && <MenuItem icon={<ListIcon />} name="Agenda" path="/agendamiento" isActive={isActive} />}
-              {puede("calendario") && <MenuItem icon={<CalenderIcon />} name="Calendario" path="/agendamiento/calendario" isActive={isActive} />}
-              {puede("crear") && <MenuItem icon={<PlusIcon />} name="Agendar cita" path="/agendamiento/crear" isActive={isActive} />}
-              {puede("analitica") && <MenuItem icon={<PieChartIcon />} name="Analítica" path="/agendamiento/analitica" isActive={isActive} />}
-              {sessionStore.isAdmin && (
-                <MenuItem icon={<GroupIcon />} name="Operadores" path="/agendamiento/operadores" isActive={isActive} />
-              )}
-            </ul>
-          </div>
-        )}
-
-        {/* PEDIDOS */}
-        {verPedidos && (
-          <div>
-            <MenuSectionHeader title="Pedidos" />
-            <ul className="flex flex-col gap-1">
-              {puede("inicio") && <MenuItem icon={<GridIcon />} name="Inicio" path="/pedidos/inicio" isActive={isActive} />}
-              {puede("tablero") && <MenuItem icon={<ListIcon />} name="Tablero" path="/pedidos" isActive={isActive} />}
-              {puede("crear") && <MenuItem icon={<PlusIcon />} name="Crear pedido" path="/pedidos/crear" isActive={isActive} />}
-              {puede("historial") && <MenuItem icon={<TaskIcon />} name="Historial" path="/pedidos/historial" isActive={isActive} />}
-              {puede("configuracion") && <MenuItem icon={<PlugInIcon />} name="Configuración" path="/pedidos/config" isActive={isActive} />}
-              {sessionStore.isAdmin && (
-                <MenuItem icon={<GroupIcon />} name="Operadores" path="/pedidos/operadores" isActive={isActive} />
-              )}
-            </ul>
-          </div>
-        )}
+        <div>
+          <MenuSectionHeader title="Pedidos" />
+          <ul className="flex flex-col gap-1">
+            {puedePedidos("inicio") && <MenuItem icon={<GridIcon />} name="Inicio" path="/pedidos/inicio" isActive={isActive} />}
+            {puedePedidos("tablero") && <MenuItem icon={<ListIcon />} name="Tablero" path="/pedidos" isActive={isActive} />}
+            {puedePedidos("crear") && <MenuItem icon={<PlusIcon />} name="Crear pedido" path="/pedidos/crear" isActive={isActive} />}
+            {puedePedidos("historial") && <MenuItem icon={<TaskIcon />} name="Historial" path="/pedidos/historial" isActive={isActive} />}
+            {puedePedidos("configuracion") && <MenuItem icon={<PlugInIcon />} name="Configuración" path="/pedidos/config" isActive={isActive} />}
+            {puedeGestionarEquipo && (
+              <MenuItem icon={<GroupIcon />} name="Equipo" path="/pedidos/equipo" isActive={esRutaConHijas} />
+            )}
+          </ul>
+        </div>
       </div>
 
       <SidebarFooter />
@@ -242,10 +186,6 @@ const SidebarContent = observer(() => {
 // MAIN EXPORT
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * AppSidebar — NECTO-branded navigation for the queue management system.
- * @kgId 8025fcb3eb97
- */
 export const AppSidebar = () => (
   <BaseAppSidebar logo={<Logo />} logoCollapsed={<LogoCollapsed />}>
     <SidebarContent />

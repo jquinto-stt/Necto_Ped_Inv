@@ -8,7 +8,7 @@ import { Select } from "@/elements/form/select";
 import { Switch } from "@/elements/form/switch";
 import { Button } from "@/elements/ui/button";
 import { Badge } from "@/elements/ui/badge";
-import { pedidosStore } from "@/stores";
+import { pedidosStore, puedeCrearPedido, puedeGestionarProgramados, motivoSinPermiso } from "@/stores";
 import type { Modalidad, PedidoItem } from "@/stores/pedidos.store";
 import { ProgramarModal } from "./ProgramarModal";
 
@@ -93,6 +93,14 @@ const ModalidadIcon = ({ m }: { m: Modalidad }) => {
  * Cliente y teléfono son obligatorios; la modalidad se elige entre las
  * habilitadas en la config; los items son una lista dinámica (con catálogo
  * opcional). Se puede programar para más tarde (calendario en ProgramarModal).
+ *
+ * **Autorización (Fase 2).** La ruta ya exige `orders.create`. Además:
+ *   - El submit re-comprueba `orders.create` (defensa en profundidad: la ruta
+ *     protege la entrada, no la acción).
+ *   - Programar para más tarde exige `scheduled.manage`: crear un pedido que
+ *     entra al pipeline más tarde es una acción de programación, no de alta.
+ *     Sin ella, el bloque de programación no se dibuja y el pedido siempre se
+ *     crea activo (`nuevo`).
  */
 export const CrearPedidoPage = observer(() => {
   const navigate = useNavigate();
@@ -100,6 +108,10 @@ export const CrearPedidoPage = observer(() => {
   const modalidadesDisponibles = pedidosStore.config.modalidades;
   const catalogo = pedidosStore.config.catalogo;
   const tieneCatalogo = catalogo.length > 0;
+
+  // Capacidades de esta página.
+  const puedeCrear = puedeCrearPedido();
+  const puedeProgramar = puedeGestionarProgramados();
 
   const [cliente, setCliente] = useState("");
   const [telefono, setTelefono] = useState("");
@@ -157,6 +169,9 @@ export const CrearPedidoPage = observer(() => {
   const totalPedido = itemsValidos.reduce((s, it) => s + (it.precio ?? 0) * Math.max(1, it.cantidad), 0);
 
   const handleCreate = () => {
+    // Defensa en profundidad (C5): la ruta exige `orders.create`, pero la
+    // acción lo re-comprueba. Fail-closed.
+    if (!puedeCrear) return;
     if (!validate()) return;
     const itemsLimpios: PedidoItem[] = items
       .filter((it) => it.nombre.trim() !== "")
@@ -166,7 +181,9 @@ export const CrearPedidoPage = observer(() => {
         precio: it.precio,
       }));
 
-    const programadoPara = programar && programadoISO ? programadoISO : undefined;
+    // Programar exige `scheduled.manage`: si no se tiene, el pedido se crea
+    // activo aunque el estado local hubiera quedado en `true`.
+    const programadoPara = programar && puedeProgramar && programadoISO ? programadoISO : undefined;
 
     const pedido = pedidosStore.crearPedido({
       cliente: cliente.trim(),
@@ -434,52 +451,55 @@ export const CrearPedidoPage = observer(() => {
               />
             </div>
 
-            {/* Programar para más tarde (conserva el ProgramarModal) */}
-            <div className="mt-5 rounded-xl bg-gray-50 p-4 dark:bg-white/[0.03]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">¿Programar para más tarde?</p>
-                  <p className="mt-0.5 text-xs text-gray-400">
-                    El pedido esperará hasta la hora indicada y se activará solo (o puedes activarlo antes).
-                  </p>
+            {/* Programar para más tarde (conserva el ProgramarModal).
+                Solo se ofrece si la sesión puede gestionar programados. */}
+            {puedeProgramar && (
+              <div className="mt-5 rounded-xl bg-gray-50 p-4 dark:bg-white/[0.03]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">¿Programar para más tarde?</p>
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      El pedido esperará hasta la hora indicada y se activará solo (o puedes activarlo antes).
+                    </p>
+                  </div>
+                  <Switch
+                    checked={programar}
+                    onChange={(v) => {
+                      setProgramar(v);
+                      if (v && !programadoISO) setShowProgramar(true);
+                      if (!v) setErrors((prev) => ({ ...prev, programado: "" }));
+                    }}
+                  />
                 </div>
-                <Switch
-                  checked={programar}
-                  onChange={(v) => {
-                    setProgramar(v);
-                    if (v && !programadoISO) setShowProgramar(true);
-                    if (!v) setErrors((prev) => ({ ...prev, programado: "" }));
-                  }}
-                />
-              </div>
 
-              {programar && (
-                <div className="mt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowProgramar(true)}
-                    className={`flex w-full items-center justify-between gap-3 rounded-lg border bg-white px-4 py-3 text-left transition-colors hover:border-brand-300 dark:bg-gray-900 dark:hover:border-brand-700 ${
-                      errors.programado ? "border-error-500" : "border-gray-300 dark:border-gray-700"
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5 text-brand-500">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      {programadoISO ? (
-                        <span className="text-sm font-medium capitalize text-gray-800 dark:text-white/90">
-                          {formatFechaHora(programadoISO)}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-gray-400">Elegir fecha y hora…</span>
-                      )}
-                    </span>
-                    <span className="text-xs font-medium text-brand-500">Cambiar</span>
-                  </button>
-                  {errors.programado && <p className="mt-1.5 text-xs text-error-500">{errors.programado}</p>}
-                </div>
-              )}
-            </div>
+                {programar && (
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowProgramar(true)}
+                      className={`flex w-full items-center justify-between gap-3 rounded-lg border bg-white px-4 py-3 text-left transition-colors hover:border-brand-300 dark:bg-gray-900 dark:hover:border-brand-700 ${
+                        errors.programado ? "border-error-500" : "border-gray-300 dark:border-gray-700"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5 text-brand-500">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        {programadoISO ? (
+                          <span className="text-sm font-medium capitalize text-gray-800 dark:text-white/90">
+                            {formatFechaHora(programadoISO)}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">Elegir fecha y hora…</span>
+                        )}
+                      </span>
+                      <span className="text-xs font-medium text-brand-500">Cambiar</span>
+                    </button>
+                    {errors.programado && <p className="mt-1.5 text-xs text-error-500">{errors.programado}</p>}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         </div>
 
@@ -562,9 +582,14 @@ export const CrearPedidoPage = observer(() => {
 
             {/* Acción */}
             <div className="border-t border-gray-100 px-5 py-4 dark:border-gray-800">
-              <Button className="w-full" size="md" onClick={handleCreate}>
-                {programar ? "Programar pedido" : "Crear pedido"}
+              <Button className="w-full" size="md" onClick={handleCreate} disabled={!puedeCrear}>
+                {programar && puedeProgramar ? "Programar pedido" : "Crear pedido"}
               </Button>
+              {!puedeCrear && (
+                <p className="mt-2 text-center text-xs text-gray-500 dark:text-gray-400">
+                  {motivoSinPermiso("orders.create")}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={() => navigate("/pedidos")}

@@ -6,7 +6,7 @@ import { Button } from "@/elements/ui/button";
 import { Switch } from "@/elements/form/switch";
 import { Input } from "@/elements/form/input";
 import { Label } from "@/elements/form/label";
-import { pedidosStore } from "@/stores";
+import { pedidosStore, puedeGuardarConfig, puedeEditarPlantillas, motivoSinPermiso } from "@/stores";
 import type {
   Modalidad,
   PedidosConfig,
@@ -65,6 +65,21 @@ const DIAS_SEMANA: { d: number; label: string }[] = [
  * estados opcionales del pipeline (confirmado/en camino), modalidades
  * habilitadas, umbral de urgencia, plantillas de WhatsApp (solo texto) y un
  * catálogo simple opcional de items.
+ *
+ * **Autorización (Fase 2).** Dos capacidades distintas, con propósitos
+ * distintos:
+ *
+ *   - `settings.read`  → entrar y VER la configuración (lo exige la ruta).
+ *   - `settings.manage`→ modificarla. Sin ella la página es de **solo lectura**:
+ *     se envuelve el formulario en un `<fieldset disabled>` (que deshabilita
+ *     nativamente inputs y switches) y se explica por qué.
+ *   - `channels.manage`→ editar las plantillas de WhatsApp, que son contenido
+ *     de canal, no ajuste del módulo. Un rol puede tener `settings.manage` y no
+ *     `channels.manage` (o al revés).
+ *
+ * Se optó por **deshabilitar con motivo** en vez de ocultar: quien llega aquí
+ * tiene `settings.read`, así que ocultarle el formulario le haría creer que la
+ * configuración no existe. "Ver pero no poder" es la respuesta honesta.
  */
 export const ConfigPage = observer(() => {
   // Borrador local: no toca el store hasta "Guardar".
@@ -80,6 +95,13 @@ export const ConfigPage = observer(() => {
     alertaAtencion: { ...pedidosStore.config.alertaAtencion },
   }));
   const [guardado, setGuardado] = useState(false);
+
+  // ── Autorización de la página ──
+  // `puedeEditar` gobierna todo el formulario; `puedePlantillas` solo la
+  // tarjeta de plantillas de WhatsApp (contenido de canal).
+  const puedeEditar = puedeGuardarConfig();
+  const puedePlantillas = puedeEditarPlantillas();
+  const soloLectura = !puedeEditar;
 
   const set = <K extends keyof PedidosConfig>(k: K, v: PedidosConfig[K]) => {
     setDraft((prev) => ({ ...prev, [k]: v }));
@@ -146,6 +168,8 @@ export const ConfigPage = observer(() => {
   const horarioInvalido = draft.horario.activo && draft.horario.cierre <= draft.horario.apertura;
 
   const guardar = () => {
+    // Defensa en profundidad: sin `settings.manage` no se persiste nada.
+    if (!puedeEditar) return;
     if (horarioInvalido) return;
     // Limpia items de catálogo sin nombre antes de persistir.
     const catalogoLimpio = draft.catalogo
@@ -176,11 +200,35 @@ export const ConfigPage = observer(() => {
         </div>
         <div className="flex items-center gap-3">
           {guardado && <span className="text-sm text-success-600 dark:text-success-500">Guardado ✓</span>}
-          <Button size="sm" disabled={horarioInvalido} onClick={guardar}>Guardar cambios</Button>
+          <Button size="sm" disabled={horarioInvalido || soloLectura} onClick={guardar}>
+            Guardar cambios
+          </Button>
         </div>
       </div>
 
-      <div className="space-y-6">
+      {/* Solo lectura: se tiene `settings.read` pero no `settings.manage`.
+          Se avisa arriba para que el formulario deshabilitado no parezca un
+          error de la app. */}
+      {soloLectura && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4 dark:border-warning-500/30 dark:bg-warning-500/10">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="mt-0.5 h-5 w-5 shrink-0 text-warning-500">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V7.5a4.5 4.5 0 10-9 0v3m-.75 0h10.5a1.5 1.5 0 011.5 1.5v6a1.5 1.5 0 01-1.5 1.5H6.75A1.5 1.5 0 015.25 18v-6a1.5 1.5 0 011.5-1.5z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-warning-700 dark:text-warning-300">Configuración en solo lectura</p>
+            <p className="mt-0.5 text-xs text-warning-600 dark:text-warning-400">
+              Puedes consultar los ajustes, pero no modificarlos. {motivoSinPermiso("settings.manage")}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* El formulario entero es un <fieldset>: deshabilitarlo desactiva
+          NATIVAMENTE todos los inputs y switches de dentro (incluido el
+          checkbox oculto del Switch), sin tener que cablear `disabled` en cada
+          control. `min-w-0` neutraliza el `min-inline-size` por defecto del
+          fieldset, que rompería los grids internos. */}
+      <fieldset disabled={soloLectura} className="m-0 min-w-0 space-y-6 border-0 p-0">
         {/* Estados del pipeline */}
         <Card>
           <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Estados del pipeline</h2>
@@ -434,20 +482,30 @@ export const ConfigPage = observer(() => {
               como guion sugerido del mensaje en cada transición.
             </p>
           </div>
-          <div className="mt-4 space-y-4">
-            {PLANTILLA_META.map(({ key, label }) => (
-              <div key={key}>
-                <Label htmlFor={`pl-${key}`}>{label}</Label>
-                <textarea
-                  id={`pl-${key}`}
-                  rows={2}
-                  value={draft.plantillas[key]}
-                  onChange={(e) => setPlantilla(key, e.target.value)}
-                  className={`${inputBase} h-auto ${inputOk}`}
-                />
-              </div>
-            ))}
-          </div>
+          {/* Las plantillas son contenido de CANAL (`channels.manage`), no un
+              ajuste del módulo (`settings.manage`). Se deshabilitan con su
+              propio fieldset, independiente del resto del formulario. */}
+          <fieldset disabled={!puedePlantillas} className="m-0 min-w-0 border-0 p-0">
+            <div className="mt-4 space-y-4">
+              {PLANTILLA_META.map(({ key, label }) => (
+                <div key={key}>
+                  <Label htmlFor={`pl-${key}`}>{label}</Label>
+                  <textarea
+                    id={`pl-${key}`}
+                    rows={2}
+                    value={draft.plantillas[key]}
+                    onChange={(e) => setPlantilla(key, e.target.value)}
+                    className={`${inputBase} h-auto ${inputOk}`}
+                  />
+                </div>
+              ))}
+            </div>
+          </fieldset>
+          {!puedePlantillas && (
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {motivoSinPermiso("channels.manage")}
+            </p>
+          )}
         </Card>
 
         {/* Catálogo simple */}
@@ -508,13 +566,18 @@ export const ConfigPage = observer(() => {
             </div>
           )}
         </Card>
-      </div>
+      </fieldset>
 
       {/* Guardar (footer) */}
       <div className="mt-6 flex items-center justify-end gap-3">
         {guardado && <span className="text-sm text-success-600 dark:text-success-500">Guardado ✓</span>}
-        <Button disabled={horarioInvalido} onClick={guardar}>Guardar cambios</Button>
+        <Button disabled={horarioInvalido || soloLectura} onClick={guardar}>Guardar cambios</Button>
       </div>
+      {soloLectura && (
+        <p className="mt-2 text-right text-xs text-gray-500 dark:text-gray-400">
+          {motivoSinPermiso("settings.manage")}
+        </p>
+      )}
     </>
   );
 });

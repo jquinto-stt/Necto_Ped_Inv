@@ -6,9 +6,33 @@ import { Badge } from "@/elements/ui/badge";
 import { Button } from "@/elements/ui/button";
 import { Modal } from "@/elements/ui/modal";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/elements/ui/table";
-import { pedidosStore } from "@/stores";
+import {
+  pedidosStore,
+  puedeMoverA,
+  puedeCancelarPedido,
+  puedeEscribirCliente,
+  puedeVerProgramados,
+  puedeGestionarProgramados,
+} from "@/stores";
 import type { Pedido, PedidoEstado, Modalidad } from "@/stores/pedidos.store";
 import { ProgramarModal } from "./ProgramarModal";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUTORIZACIÓN DE ACCIONES (contrato §1.4 / §2)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Cada afordancia de este tablero se gobierna por una CAPACIDAD, no por el
+// módulo ni por la sección. Ver `stores/acceso.utils.ts` para el mapeo
+// transición-del-pipeline → capacidad.
+//
+// Criterio de presentación: una acción que la sesión **no puede** ejecutar no
+// se dibuja (en vez de dibujarse deshabilitada). Evita muros de botones grises
+// y deja cada rol con exactamente las acciones que le corresponden. Donde sí
+// conviene "ver pero no poder" (p. ej. la configuración) se deshabilita con
+// motivo; eso se resuelve en la página correspondiente.
+//
+// Invariante C5: poder ENTRAR a /pedidos no implica poder operar nada. El
+// guard de ruta solo exige `orders.read`.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PREFERENCIA DE VISTA (persistida en localStorage)
@@ -87,6 +111,15 @@ const PedidoCard = observer(
     const siguiente = pedidosStore.siguienteEstado(pedido);
     const mins = pedidosStore.minutosEnEstado(pedido);
 
+    // ── Autorización de las tres acciones de la tarjeta ─────────────────────
+    // Avanzar exige la capacidad del ESTADO DESTINO (no una genérica): confirmar
+    // un pedido y prepararlo son permisos distintos, y un rol de Preparación no
+    // debe poder confirmar. `puedeMoverA` es fail-closed: sin destino → false.
+    const puedeAvanzar = puedeMoverA(siguiente);
+    const puedeEscribir = puedeEscribirCliente();
+    const puedeCancelar = puedeCancelarPedido();
+    const sinAcciones = !puedeAvanzar && !puedeEscribir && !puedeCancelar;
+
     // El avance a `entregado` es irreversible: pide confirmación. El resto de
     // pasos son reversibles de facto (siguen en curso) y avanzan directo.
     const handleAvanzar = () => {
@@ -137,34 +170,41 @@ const PedidoCard = observer(
           {pedido.origen === "whatsapp" && <Badge color="success" size="xs">WhatsApp</Badge>}
         </div>
 
-        {/* Acciones primarias (no propagan el click al cuerpo) */}
-        <div className="flex flex-wrap items-center gap-2" onClick={stop}>
-          {siguiente && (
-            <Button size="sm" onClick={handleAvanzar}>
-              {pedidosStore.estadoLabel(siguiente)}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            startIcon={<WhatsAppIcon />}
-            onClick={() => abrirWhatsApp(pedido.telefono)}
-            className="!text-[#17b363] hover:!bg-[#17b363]/10"
-          >
-            WhatsApp
-          </Button>
-        </div>
+        {/* Acciones primarias (no propagan el click al cuerpo).
+            Si el rol no puede ejecutar ninguna, no se dibuja la zona. */}
+        {!sinAcciones && (
+          <div className="flex flex-wrap items-center gap-2" onClick={stop}>
+            {siguiente && puedeAvanzar && (
+              <Button size="sm" onClick={handleAvanzar}>
+                {pedidosStore.estadoLabel(siguiente)}
+              </Button>
+            )}
+            {puedeEscribir && (
+              <Button
+                size="sm"
+                variant="ghost"
+                startIcon={<WhatsAppIcon />}
+                onClick={() => abrirWhatsApp(pedido.telefono)}
+                className="!text-[#17b363] hover:!bg-[#17b363]/10"
+              >
+                WhatsApp
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* Acción destructiva separada (evita misclicks junto a "avanzar") */}
-        <div className="mt-2 border-t border-gray-100 pt-2 dark:border-gray-800" onClick={stop}>
-          <button
-            type="button"
-            onClick={onCancelar}
-            className="text-xs font-medium text-error-500 hover:text-error-600 dark:text-error-400"
-          >
-            Cancelar pedido
-          </button>
-        </div>
+        {puedeCancelar && (
+          <div className="mt-2 border-t border-gray-100 pt-2 dark:border-gray-800" onClick={stop}>
+            <button
+              type="button"
+              onClick={onCancelar}
+              className="text-xs font-medium text-error-500 hover:text-error-600 dark:text-error-400"
+            >
+              Cancelar pedido
+            </button>
+          </div>
+        )}
       </div>
     );
   },
@@ -233,9 +273,11 @@ const DetalleModal = observer(({ pedido, onClose }: { pedido: Pedido; onClose: (
       )}
 
       <div className="flex items-center justify-end gap-3">
-        <Button size="sm" variant="ghost" startIcon={<WhatsAppIcon />} onClick={() => abrirWhatsApp(pedido.telefono)} className="!text-[#17b363] hover:!bg-[#17b363]/10">
-          WhatsApp
-        </Button>
+        {puedeEscribirCliente() && (
+          <Button size="sm" variant="ghost" startIcon={<WhatsAppIcon />} onClick={() => abrirWhatsApp(pedido.telefono)} className="!text-[#17b363] hover:!bg-[#17b363]/10">
+            WhatsApp
+          </Button>
+        )}
         <Button size="sm" variant="outline" onClick={onClose}>Cerrar</Button>
       </div>
     </Modal>
@@ -255,6 +297,9 @@ const CancelarModal = observer(
     const [motivo, setMotivo] = useState("");
 
     const confirmar = () => {
+      // Defensa en profundidad: el modal solo se abre desde `abrirCancelar`
+      // (que ya comprueba `orders.cancel`), pero la mutación lo re-comprueba.
+      if (!puedeCancelarPedido()) return;
       const notaMotivo = motivo.trim();
       if (notaMotivo) {
         // El motivo es opcional; si se indica, se anexa a las notas del pedido.
@@ -312,6 +357,8 @@ const CancelarModal = observer(
 const EntregaModal = observer(
   ({ pedido, onClose }: { pedido: Pedido; onClose: () => void }) => {
     const confirmar = () => {
+      // Entregar es el último paso de preparación: `preparation.manage`.
+      if (!puedeMoverA("entregado")) return;
       pedidosStore.avanzar(pedido.id);
       onClose();
     };
@@ -360,6 +407,14 @@ const ProgramadoCard = observer(({ pedido: p, onCancelar, onReprogramar, onDetal
   const clickable = !!onDetalle;
   // Evita que los botones de acción abran el detalle.
   const stop = (e: React.MouseEvent) => e.stopPropagation();
+
+  // Activar y reprogramar son la MISMA capacidad (`scheduled.manage`): ambas
+  // alteran cuándo entra el pedido al pipeline. Cancelar es otra cosa
+  // (`orders.cancel`) y se gobierna aparte.
+  const puedeGestionar = puedeGestionarProgramados();
+  const puedeCancelar = puedeCancelarPedido();
+  const sinAcciones = !puedeGestionar && !puedeCancelar;
+
   return (
     <div
       id={`programado-${p.id}`}
@@ -400,26 +455,32 @@ const ProgramadoCard = observer(({ pedido: p, onCancelar, onReprogramar, onDetal
         )}
       </div>
       {/* Acciones: no propagan el click al cuerpo */}
-      <div className="flex shrink-0 flex-col items-end gap-1.5" onClick={stop}>
-        <Button size="sm" onClick={() => pedidosStore.activarAhora(p.id)}>Activar ahora</Button>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onReprogramar(p)}
-            className="text-xs font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
-          >
-            Reprogramar
-          </button>
-          <span className="text-gray-300 dark:text-gray-700">·</span>
-          <button
-            type="button"
-            onClick={() => onCancelar(p)}
-            className="text-xs font-medium text-error-500 hover:text-error-600 dark:text-error-400"
-          >
-            Cancelar
-          </button>
+      {!sinAcciones && (
+        <div className="flex shrink-0 flex-col items-end gap-1.5" onClick={stop}>
+          {puedeGestionar && <Button size="sm" onClick={() => pedidosStore.activarAhora(p.id)}>Activar ahora</Button>}
+          <div className="flex items-center gap-2">
+            {puedeGestionar && (
+              <button
+                type="button"
+                onClick={() => onReprogramar(p)}
+                className="text-xs font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
+              >
+                Reprogramar
+              </button>
+            )}
+            {puedeGestionar && puedeCancelar && <span className="text-gray-300 dark:text-gray-700">·</span>}
+            {puedeCancelar && (
+              <button
+                type="button"
+                onClick={() => onCancelar(p)}
+                className="text-xs font-medium text-error-500 hover:text-error-600 dark:text-error-400"
+              >
+                Cancelar
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 });
@@ -601,6 +662,13 @@ const AccionesMenu = observer(
     const [open, setOpen] = useState(false);
     const siguiente = pedidosStore.siguienteEstado(pedido);
 
+    // Mismas reglas que el kanban: avance por capacidad del destino, WhatsApp
+    // por `channels.read`, cancelar por `orders.cancel`.
+    const puedeAvanzar = puedeMoverA(siguiente);
+    const puedeEscribir = puedeEscribirCliente();
+    const puedeCancelar = puedeCancelarPedido();
+    const sinAcciones = !puedeAvanzar && !puedeEscribir && !puedeCancelar;
+
     // Cierra el menú al hacer click fuera.
     useEffect(() => {
       if (!open) return;
@@ -614,6 +682,10 @@ const AccionesMenu = observer(
       setOpen(false);
       fn();
     };
+
+    // Sin acciones disponibles no se dibuja el menú (evita un botón que abre
+    // un desplegable vacío).
+    if (sinAcciones) return null;
 
     return (
       <div className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
@@ -632,7 +704,7 @@ const AccionesMenu = observer(
 
         {open && (
           <div className="absolute right-0 z-40 mt-1 w-52 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-theme-lg dark:border-gray-800 dark:bg-gray-900">
-            {siguiente && (
+            {siguiente && puedeAvanzar && (
               <button
                 type="button"
                 onClick={run(() => onAvanzar(pedido))}
@@ -642,23 +714,29 @@ const AccionesMenu = observer(
                 Avanzar a "{pedidosStore.estadoLabel(siguiente)}"
               </button>
             )}
-            <button
-              type="button"
-              onClick={run(() => abrirWhatsApp(pedido.telefono))}
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-[#17b363] hover:bg-[#17b363]/10"
-            >
-              <WhatsAppIcon />
-              Abrir WhatsApp
-            </button>
-            <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
-            <button
-              type="button"
-              onClick={run(() => onCancelar(pedido.id))}
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-error-500 hover:bg-error-50 dark:hover:bg-error-500/10"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              Cancelar pedido
-            </button>
+            {puedeEscribir && (
+              <button
+                type="button"
+                onClick={run(() => abrirWhatsApp(pedido.telefono))}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-[#17b363] hover:bg-[#17b363]/10"
+              >
+                <WhatsAppIcon />
+                Abrir WhatsApp
+              </button>
+            )}
+            {puedeCancelar && (
+              <>
+                <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                <button
+                  type="button"
+                  onClick={run(() => onCancelar(pedido.id))}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-error-500 hover:bg-error-50 dark:hover:bg-error-500/10"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  Cancelar pedido
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -808,6 +886,22 @@ const VistaToggle = ({ vista, onChange }: { vista: VistaTablero; onChange: (v: V
  * del pipeline (según la config). Las tarjetas avanzan por el pipeline con el
  * botón "siguiente estado", se cancelan, se abren en detalle o disparan
  * WhatsApp del cliente. Filtro por modalidad en el encabezado.
+ *
+ * **Autorización (Fase 2).** Entrar aquí solo exige `orders.read`. Cada acción
+ * de dentro se gobierna por su propia capacidad:
+ *
+ *   | Acción                          | Capacidad            |
+ *   |---------------------------------|----------------------|
+ *   | Avanzar a `confirmado`          | `orders.confirm`     |
+ *   | Avanzar a preparación/entrega   | `preparation.manage` |
+ *   | Cancelar un pedido              | `orders.cancel`      |
+ *   | Abrir WhatsApp del cliente      | `channels.read`      |
+ *   | Ver la sección de programados   | `scheduled.read`     |
+ *   | Activar / reprogramar           | `scheduled.manage`   |
+ *
+ * Consecuencia buscada (C5): un rol de Preparación ve el tablero y mueve el
+ * pedido por preparación y entrega, pero no puede confirmarlo ni cancelarlo, y
+ * no ve el botón de WhatsApp.
  */
 export const TableroPage = observer(() => {
   const [detalleId, setDetalleId] = useState<string | null>(null);
@@ -890,6 +984,27 @@ export const TableroPage = observer(() => {
   const pedidosDeColumna = (estado: PedidoEstado): Pedido[] =>
     pedidosStore.porEstado(estado).filter((p) => filtro === FILTRO_TODAS || p.modalidad === filtro);
 
+  // ── Apertura de modales, gobernada por capacidad ─────────────────────────
+  //
+  // Embudo único: aunque algún camino de UI se saltara el ocultado del botón,
+  // el modal no se abre sin la capacidad correspondiente. Las tarjetas ya
+  // ocultan sus acciones; esto es la segunda línea (defensa en profundidad,
+  // coherente con C5: entrar a la sección no habilita operar).
+  const abrirCancelar = (id: string) => {
+    if (puedeCancelarPedido()) setCancelarId(id);
+  };
+  const abrirEntrega = (id: string) => {
+    if (puedeMoverA("entregado")) setEntregaId(id);
+  };
+  const abrirReprogramar = (id: string) => {
+    if (puedeGestionarProgramados()) setReprogramarId(id);
+  };
+
+  // Ver programados es una capacidad propia (`scheduled.read`): un rol de
+  // Preparación la tiene, pero uno personalizado sin ella no debe ver la
+  // sección ni poder abrir su modal.
+  const verProgramados = puedeVerProgramados();
+
   return (
     <>
       <PageMeta title="Tablero de pedidos" description="Flujo de pedidos en vivo, de nuevo a entregado" />
@@ -925,14 +1040,17 @@ export const TableroPage = observer(() => {
         </div>
       </div>
 
-      {/* Pedidos programados (arriba del kanban, no como columna del pipeline) */}
-      <ProgramadosSection
-        focusId={focusId}
-        onCancelar={(p) => setCancelarId(p.id)}
-        onReprogramar={(p) => setReprogramarId(p.id)}
-        onVerTodos={() => setVerTodosProgramados(true)}
-        onDetalle={(id) => setDetalleId(id)}
-      />
+      {/* Pedidos programados (arriba del kanban, no como columna del pipeline).
+          Requiere `scheduled.read`; sin él la sección no existe para el rol. */}
+      {verProgramados && (
+        <ProgramadosSection
+          focusId={focusId}
+          onCancelar={(p) => abrirCancelar(p.id)}
+          onReprogramar={(p) => abrirReprogramar(p.id)}
+          onVerTodos={() => setVerTodosProgramados(true)}
+          onDetalle={(id) => setDetalleId(id)}
+        />
+      )}
 
       {/* Tablero — vista Kanban o Lista según preferencia */}
       {vista === "kanban" ? (
@@ -959,8 +1077,8 @@ export const TableroPage = observer(() => {
                       key={p.id}
                       pedido={p}
                       onDetalle={() => setDetalleId(p.id)}
-                      onCancelar={() => setCancelarId(p.id)}
-                      onConfirmarEntrega={() => setEntregaId(p.id)}
+                      onCancelar={() => abrirCancelar(p.id)}
+                      onConfirmarEntrega={() => abrirEntrega(p.id)}
                     />
                   ))}
                   {items.length === 0 && (
@@ -977,17 +1095,17 @@ export const TableroPage = observer(() => {
         <ListaView
           pedidos={columnas.flatMap((estado) => pedidosDeColumna(estado))}
           onDetalle={(id) => setDetalleId(id)}
-          onCancelar={(id) => setCancelarId(id)}
-          onConfirmarEntrega={(id) => setEntregaId(id)}
+          onCancelar={abrirCancelar}
+          onConfirmarEntrega={abrirEntrega}
         />
       )}
 
       {detalle && <DetalleModal pedido={detalle} onClose={() => setDetalleId(null)} />}
-      {verTodosProgramados && (
+      {verTodosProgramados && verProgramados && (
         <ProgramadosModal
           onClose={() => setVerTodosProgramados(false)}
-          onCancelar={(p) => setCancelarId(p.id)}
-          onReprogramar={(p) => setReprogramarId(p.id)}
+          onCancelar={(p) => abrirCancelar(p.id)}
+          onReprogramar={(p) => abrirReprogramar(p.id)}
           onDetalle={(id) => {
             // Cierra este modal para que el detalle quede visible.
             setVerTodosProgramados(false);
@@ -1002,6 +1120,9 @@ export const TableroPage = observer(() => {
           valorInicial={paraReprogramar.programadoPara ? new Date(paraReprogramar.programadoPara) : null}
           onClose={() => setReprogramarId(null)}
           onConfirmar={(iso) => {
+            // Reprogramar exige `scheduled.manage` (el modal solo se abre desde
+            // `abrirReprogramar`; esto es la re-comprobación de la mutación).
+            if (!puedeGestionarProgramados()) return;
             pedidosStore.reprogramar(paraReprogramar.id, iso);
             setReprogramarId(null);
           }}

@@ -31,8 +31,13 @@ const UserIconOutline = () => (
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Chip de identidad del operador simulado. Se muestra en el header en TODAS
- * las vistas mientras se simula un operador, para dejar claro "quién soy".
+ * Chip de identidad de "Viendo como". Se muestra en el header en TODAS las
+ * vistas mientras se simula un operador, para dejar claro bajo qué perfil se
+ * está viendo la app.
+ *
+ * El nombre se lee del store de operadores por `operadorSimuladoId`: el
+ * `AccessContext` es solo autorización y no lleva datos de presentación
+ * (contrato §1.8).
  */
 const OperadorChip = observer(() => {
   const op = sessionStore.operadorSimulado;
@@ -52,7 +57,7 @@ const OperadorChip = observer(() => {
         {iniciales}
       </span>
       <div className="hidden leading-tight sm:block">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-brand-500 dark:text-brand-400">Operando como</p>
+        <p className="text-[10px] font-medium uppercase tracking-wide text-brand-500 dark:text-brand-400">Viendo como</p>
         <p className="text-xs font-semibold text-gray-800 dark:text-white/90">{op.nombre}</p>
       </div>
     </div>

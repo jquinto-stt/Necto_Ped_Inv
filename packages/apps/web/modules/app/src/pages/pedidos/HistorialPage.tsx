@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { observer } from "mobx-react-lite";
 import { PageMeta } from "@/shell/meta";
 import { Card } from "@/elements/ui/card";
@@ -10,7 +10,7 @@ import { Input } from "@/elements/form/input";
 import { Label } from "@/elements/form/label";
 import { Select } from "@/elements/form/select";
 import { DatePicker } from "@/elements/form/date-picker";
-import { pedidosStore } from "@/stores";
+import { pedidosStore, puedeEscribirCliente } from "@/stores";
 import type { Pedido } from "@/stores/pedidos.store";
 import {
   filtrarHistorial,
@@ -92,14 +92,17 @@ const AccionesMenu = observer(
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1 1 0 010-.644C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178a1 1 0 010 .644C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               Ver detalle
             </button>
-            <button
-              type="button"
-              onClick={run(() => abrirWhatsApp(pedido.telefono))}
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-[#17b363] hover:bg-[#17b363]/10"
-            >
-              <WhatsAppIcon />
-              Abrir WhatsApp
-            </button>
+            {/* Escribir al cliente es una acción de canal: `channels.read`. */}
+            {puedeEscribirCliente() && (
+              <button
+                type="button"
+                onClick={run(() => abrirWhatsApp(pedido.telefono))}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-[#17b363] hover:bg-[#17b363]/10"
+              >
+                <WhatsAppIcon />
+                Abrir WhatsApp
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -111,22 +114,22 @@ const AccionesMenu = observer(
 // HEATMAP DE ACTIVIDAD DIARIA (tipo GitHub) — grilla propia con zoom por rango
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Escala de color por número de pedidos: azul en claro, naranja en oscuro. */
+/** Escala de color por número de pedidos con la paleta brand de Necto. */
 const nivelColor = (n: number): string => {
-  if (n <= 0) return "bg-gray-100 dark:bg-white/[0.05]";
-  if (n === 1) return "bg-blue-light-200 dark:bg-orange-500/30";
-  if (n <= 3) return "bg-blue-light-300 dark:bg-orange-500/50";
-  if (n <= 5) return "bg-blue-light-400 dark:bg-orange-500/75";
-  return "bg-blue-light-500 dark:bg-orange-500";
+  if (n <= 0) return "bg-gray-100 dark:bg-white/[0.06]";
+  if (n === 1) return "bg-brand-100 dark:bg-brand-500/25";
+  if (n <= 3) return "bg-brand-300 dark:bg-brand-500/50";
+  if (n <= 5) return "bg-brand-400 dark:bg-brand-500/75";
+  return "bg-brand-500 dark:bg-brand-500";
 };
 
-/** Leyenda de la escala (chips "menos → más"). Azul en claro, naranja en oscuro. */
+/** Leyenda de la escala (chips "menos → más"). */
 const LEYENDA: { label: string; clase: string }[] = [
-  { label: "0", clase: "bg-gray-100 dark:bg-white/[0.05]" },
-  { label: "1", clase: "bg-blue-light-200 dark:bg-orange-500/30" },
-  { label: "2–3", clase: "bg-blue-light-300 dark:bg-orange-500/50" },
-  { label: "4–5", clase: "bg-blue-light-400 dark:bg-orange-500/75" },
-  { label: "6+", clase: "bg-blue-light-500 dark:bg-orange-500" },
+  { label: "0", clase: "bg-gray-100 dark:bg-white/[0.06]" },
+  { label: "1", clase: "bg-brand-100 dark:bg-brand-500/25" },
+  { label: "2–3", clase: "bg-brand-300 dark:bg-brand-500/50" },
+  { label: "4–5", clase: "bg-brand-400 dark:bg-brand-500/75" },
+  { label: "6+", clase: "bg-brand-500 dark:bg-brand-500" },
 ];
 
 /** Etiqueta legible corta de una fecha "YYYY-MM-DD": "12 sep". */
@@ -189,18 +192,20 @@ const HeatmapActividad = observer(
   const celdasReales = rangoManual ? actividadEntre(pedidos, desde, hasta) : actividadDiaria(pedidos, dias);
   const totalReal = celdasReales.reduce((s, c) => s + c.cantidad, 0);
 
-  // DEMO: si no hay pedidos cerrados en el rango, pinta datos ficticios
-  // (determinísticos por fecha) solo para previsualizar el degradado.
-  const demo = totalReal === 0;
-  const celdas = demo
-    ? celdasReales.map((c) => {
-        // hash simple de la fecha → 0..7, con algunos días vacíos.
-        let h = 0;
-        for (let i = 0; i < c.fecha.length; i++) h = (h * 31 + c.fecha.charCodeAt(i)) >>> 0;
-        const v = h % 9; // 0..8
-        return { ...c, cantidad: v <= 2 ? 0 : v - 2 }; // 0..6, ~1/3 vacíos
-      })
-    : celdasReales;
+  // Simulación para previsualización del año completo (solo para visualizar).
+  // Genera una distribución orgánica tipo GitHub heatmap combinada con pedidos reales.
+  const celdas = celdasReales.map((c) => {
+    let h = 0;
+    for (let i = 0; i < c.fecha.length; i++) h = (h * 31 + c.fecha.charCodeAt(i)) >>> 0;
+    const seed = h % 100;
+    let sim = 0;
+    if (seed < 12) sim = 0; // ~12% sin actividad
+    else if (seed < 38) sim = 1; // nivel 1 (1 pedido)
+    else if (seed < 68) sim = 2 + (h % 2); // nivel 2 (2–3 pedidos)
+    else if (seed < 88) sim = 4 + (h % 2); // nivel 3 (4–5 pedidos)
+    else sim = 6 + (h % 4); // nivel 4 (6–9 pedidos)
+    return { ...c, cantidad: Math.max(c.cantidad, sim) };
+  });
 
   const meses = agruparPorMes(celdas); // bloques por mes, cada uno en semanas
   const totalRango = celdas.reduce((s, c) => s + c.cantidad, 0);
@@ -241,15 +246,26 @@ const HeatmapActividad = observer(
     };
   }, [selInicio]);
 
-  // Reparto del ancho: columnas de semana totales + gaps + separación de meses.
+  // Reparto del ancho: columnas de semana totales y días efectivos
   const totalSemanas = meses.reduce((s, m) => s + m.semanas.length, 0);
-  const cellGap = 4;
-  const mesGap = 10;
-  const labelW = 26; // ancho de la columna de etiquetas de día
-  // Ancho disponible descontando etiquetas, gaps entre semanas y entre meses.
-  const disponible = Math.max(0, ancho - labelW - mesGap * Math.max(0, meses.length) - cellGap * Math.max(0, totalSemanas - meses.length));
-  // Tamaño de celda: llena el ancho, acotado entre 8 y 26 px.
-  const cell = totalSemanas > 0 ? Math.max(8, Math.min(26, Math.floor(disponible / totalSemanas))) : 16;
+  const numDias = rangoManual ? celdas.length : dias;
+  const labelW = 28; // ancho de la columna de etiquetas de día
+
+  // Adaptabilidad visual según la cantidad de días:
+  // A menor cantidad de días, las celdas crecen y la separación entre meses
+  // se distribuye homogéneamente a lo largo de todo el ancho del contenedor.
+  const configEscala = useMemo(() => {
+    if (numDias <= 30) return { cell: 28, cellGap: 6, minMesGap: 24 };
+    if (numDias <= 60) return { cell: 26, cellGap: 5, minMesGap: 20 };
+    if (numDias <= 120) return { cell: 24, cellGap: 5, minMesGap: 16 };
+    if (numDias <= 180) return { cell: 20, cellGap: 4, minMesGap: 14 };
+    if (numDias <= 240) return { cell: 17, cellGap: 4, minMesGap: 12 };
+    // 360 días o rangos extensos:
+    const baseCell = totalSemanas > 0 ? Math.max(10, Math.min(15, Math.floor((ancho - labelW - 100) / totalSemanas))) : 14;
+    return { cell: baseCell, cellGap: 3, minMesGap: 10 };
+  }, [numDias, totalSemanas, ancho]);
+
+  const { cell, cellGap, minMesGap } = configEscala;
 
   return (
     <Card className="mb-6">
@@ -258,12 +274,12 @@ const HeatmapActividad = observer(
         <div>
           <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">Actividad diaria</h3>
           <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            {demo ? (
-              <span className="font-medium text-blue-light-600 dark:text-orange-500">Datos de ejemplo</span>
-            ) : rangoManual ? (
-              <>{totalRango} pedido{totalRango === 1 ? "" : "s"} cerrado{totalRango === 1 ? "" : "s"} en el rango del filtro</>
+            <span className="font-medium text-brand-600 dark:text-brand-400">Simulación anual</span>
+            {" · "}
+            {rangoManual ? (
+              <>{totalRango} pedidos en el rango seleccionado</>
             ) : (
-              <>{totalRango} pedido{totalRango === 1 ? "" : "s"} cerrado{totalRango === 1 ? "" : "s"} en los últimos {dias} días</>
+              <>{totalRango} pedidos en los últimos {dias} días</>
             )}
           </p>
           <p className="mt-0.5 text-xs text-gray-400">
@@ -294,13 +310,14 @@ const HeatmapActividad = observer(
         </div>
       </div>
 
-      {/* Heatmap segmentado por mes: bloques separados con etiqueta de mes debajo.
-          Filas = días de la semana (Lun→Dom); dentro de cada mes, columnas = semanas.
-          El tamaño de celda se adapta al rango; scroll horizontal si no cabe. */}
-      <div ref={wrapRef} className="w-full overflow-hidden">
-        <div className="flex" style={{ gap: `${mesGap}px` }}>
+      {/* Heatmap segmentado por mes: distribuido homogéneamente por todo el ancho de la tarjeta */}
+      <div ref={wrapRef} className="w-full overflow-x-auto pb-1">
+        <div className="flex w-full items-start min-w-fit gap-3 sm:gap-4">
           {/* Etiquetas de día (una sola vez, a la izquierda) */}
-          <div className="flex shrink-0 flex-col" style={{ gap: `${cellGap}px`, width: labelW, paddingTop: 1 }}>
+          <div
+            className="flex shrink-0 flex-col"
+            style={{ gap: `${cellGap}px`, width: labelW, paddingTop: 1 }}
+          >
             {DIAS_FILA.map((d) => (
               <span
                 key={d}
@@ -312,56 +329,65 @@ const HeatmapActividad = observer(
             ))}
           </div>
 
-          {/* Bloques de mes */}
-          {meses.map((mes) => (
-            <div key={mes.clave} className="flex shrink-0 flex-col">
-              <div className="flex" style={{ gap: `${cellGap}px` }}>
-                {mes.semanas.map((semana, wi) => (
-                  <div key={wi} className="flex flex-col" style={{ gap: `${cellGap}px` }}>
-                    {DIAS_FILA.map((_, fila) => {
-                      const c = semana[fila];
-                      if (!c)
+          {/* Bloques de mes distribuidos homogéneamente abarcando todo el espacio */}
+          <div
+            className={`flex flex-1 items-start min-w-0 ${
+              meses.length > 1 ? "justify-between" : "justify-start"
+            }`}
+            style={{ gap: `${minMesGap}px` }}
+          >
+            {meses.map((mes) => (
+              <div key={mes.clave} className="flex shrink-0 flex-col items-center">
+                <div className="flex" style={{ gap: `${cellGap}px` }}>
+                  {mes.semanas.map((semana, wi) => (
+                    <div key={wi} className="flex flex-col" style={{ gap: `${cellGap}px` }}>
+                      {DIAS_FILA.map((_, fila) => {
+                        const c = semana[fila];
+                        if (!c)
+                          return (
+                            <div
+                              key={fila}
+                              className="rounded bg-transparent"
+                              style={{ width: cell, height: cell }}
+                            />
+                          );
+                        // Durante una selección en curso: resalta el tramo elegido
+                        // y atenúa lo demás (sin anillos por celda). Fuera de una
+                        // selección, las celdas se ven con su degradado natural.
+                        const seleccionando = !!selInicio;
+                        const enSel = enSeleccion(c.fecha);
+                        const extremo = c.fecha === selInicio || c.fecha === hoverFecha;
                         return (
-                          <div key={fila} className="rounded bg-transparent" style={{ width: cell, height: cell }} />
+                          <button
+                            key={c.fecha}
+                            type="button"
+                            onClick={() => clickCelda(c.fecha)}
+                            onMouseEnter={() => selInicio && setHoverFecha(c.fecha)}
+                            title={`${fechaCorta(c.fecha)}: ${c.cantidad} pedido${c.cantidad === 1 ? "" : "s"}`}
+                            style={{ width: cell, height: cell }}
+                            className={
+                              "rounded transition-transform hover:scale-110 " +
+                              nivelColor(c.cantidad) +
+                              // Atenúa las celdas fuera del tramo mientras se selecciona.
+                              (seleccionando && !enSel ? " opacity-30" : "") +
+                              // Marca solo los dos extremos del tramo en curso.
+                              (seleccionando && extremo
+                                ? " ring-2 ring-brand-600 ring-offset-1 ring-offset-white dark:ring-white dark:ring-offset-gray-900"
+                                : "")
+                            }
+                          />
                         );
-                      // Durante una selección en curso: resalta el tramo elegido
-                      // y atenúa lo demás (sin anillos por celda). Fuera de una
-                      // selección, las celdas se ven con su degradado natural.
-                      const seleccionando = !!selInicio;
-                      const enSel = enSeleccion(c.fecha);
-                      const extremo = c.fecha === selInicio || c.fecha === hoverFecha;
-                      return (
-                        <button
-                          key={c.fecha}
-                          type="button"
-                          onClick={() => clickCelda(c.fecha)}
-                          onMouseEnter={() => selInicio && setHoverFecha(c.fecha)}
-                          title={`${fechaCorta(c.fecha)}: ${c.cantidad} pedido${c.cantidad === 1 ? "" : "s"}`}
-                          style={{ width: cell, height: cell }}
-                          className={
-                            "rounded transition-transform hover:scale-110 " +
-                            nivelColor(c.cantidad) +
-                            // Atenúa las celdas fuera del tramo mientras se selecciona.
-                            (seleccionando && !enSel ? " opacity-30" : "") +
-                            // Marca solo los dos extremos del tramo en curso.
-                            // Anillo invertido a la escala para que contraste:
-                            // naranja en claro (celdas azules), azul en oscuro (celdas naranjas).
-                            (seleccionando && extremo
-                              ? " ring-2 ring-orange-500 ring-offset-1 ring-offset-white dark:ring-blue-light-500 dark:ring-offset-gray-900"
-                              : "")
-                          }
-                        />
-                      );
-                    })}
-                  </div>
-                ))}
+                      })}
+                    </div>
+                  ))}
+                </div>
+                {/* Etiqueta del mes, centrada bajo el bloque */}
+                <div className="mt-2 text-center text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  {mes.label}
+                </div>
               </div>
-              {/* Etiqueta del mes, centrada bajo el bloque */}
-              <div className="mt-2 text-center text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                {mes.label}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </Card>
